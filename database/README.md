@@ -105,3 +105,42 @@ const pool = await oracledb.createPool({
 * **Thin Mode Benefits:** 100% pure JavaScript protocol. No Oracle Instant Client C-binaries required.
 * **SYS_REFCURSOR Support:** Procedure `sp_flag_stale_evidence` returns an open cursor directly fetched by Node.js.
 * **Bind Variables:** Standard named binds (`:caseId`, `:hashValue`) prevent SQL injection attacks.
+
+---
+
+## 6. Development Seed Accounts & Secure Initial Administrator Setup
+
+### 6.1 Policy on Seed Accounts & Passwords
+1. **No Permanent Default Passwords:** The transient development placeholder (`Password123!`) must **never** be used for permanent or production environments.
+2. **Approval Gate:** The seed data section in `oracle_schema.sql` is **not executed** into Oracle until explicit approval is given by the project lead. The initial schema deployment is executed manually via SQL*Plus only after script review.
+3. **Password Security:** All credentials in `APP_USER` must be stored as salted bcrypt hashes (work factor >= 12). Plaintext passwords are never logged or stored.
+
+### 6.2 Development Evaluation Seed Accounts (DA2 Specification)
+These accounts exist purely for academic/evaluation demonstration of the 4 role types:
+
+| User ID | Username | Full Name | Role | Credentials Note |
+|---|---|---|---|---|
+| 1 | `ravi.kumar` | Ravi Kumar | Investigator | Development Evaluation Seed (INV-1001) |
+| 2 | `ananya.rao` | Ananya Rao | Investigator | Development Evaluation Seed (INV-1002) |
+| 3 | `suresh.iyer` | Suresh Iyer | Investigator | Development Evaluation Seed (INV-1003) |
+| 4 | `priya.nair` | Priya Nair | Investigator | Development Evaluation Seed (INV-1004) |
+| 5 | `karthik.menon` | Karthik Menon | Forensic Examiner | Development Evaluation Seed (CFSL / EnCE) |
+| 6 | `divya.pillai` | Divya Pillai | Forensic Examiner | Development Evaluation Seed (CFU / GCFA) |
+| 7 | `arjun.reddy` | Arjun Reddy | Forensic Examiner | Development Evaluation Seed (CFSL / CCE) |
+| 8 | `meera.krishnan` | Meera Krishnan | Forensic Examiner | Development Evaluation Seed (RDFL / ACE) |
+| 9 | `vikram.shah` | Vikram Shah | Admin | Development Evaluation Seed |
+| 10 | `lakshmi.narayan` | Lakshmi Narayan | Auditor | Development Evaluation Seed |
+
+### 6.3 Secure Initial Administrator Bootstrapping Process (Production Mode)
+For permanent or secure deployment without pre-seeded accounts:
+1. Run the relational DDL without the seed block to establish empty tables and constraints.
+2. Execute the administrative provisioning script:
+   ```bash
+   node scripts/bootstrap_admin.js
+   ```
+3. The script:
+   - Prompts interactively for the administrator's username, full name, phone number, and a strong passphrase (minimum 12 characters, requiring uppercase, lowercase, numbers, and special symbols).
+   - Generates a cryptographically random salt and hashes the passphrase using bcrypt (`12` rounds).
+   - Inserts a single record into `APP_USER` with `Role = 'Admin'` and `Account_Status = 'Active'`.
+   - Emits an immutable record into `AUDIT_LOG` recording the initialization event with timestamp and host IP.
+

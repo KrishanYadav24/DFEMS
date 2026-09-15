@@ -270,8 +270,11 @@ CREATE INDEX idx_audit_time ON AUDIT_LOG(Timestamp_At);
 -- ============================================================================
 
 -- 1. APP_USER SEED DATA
--- Default demo password hash corresponds to: 'Password123!' (bcrypt, 12 rounds)
--- Hash: $2a$12$e6m0u5cMfqw6k7zYdO2yv.j1Jg3H8uT4P0kFvM2YvC0XgSgSgSgSg
+-- SECURITY NOTICE:
+-- The entries below represent the DA2 academic evaluation seed dataset.
+-- They must NOT be loaded into a production environment. For secure deployment,
+-- utilize the administrator bootstrapping process documented in database/README.md.
+-- Execution of this seed block is deferred until explicit project review and approval.
 INSERT INTO APP_USER (User_ID, First_Name, Last_Name, Phone_Number, Username, Password_Hash, Role, Account_Status)
 VALUES (1, 'Ravi', 'Kumar', '9876500001', 'ravi.kumar', '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewqNNw73iQp/J.K6', 'Investigator', 'Active');
 

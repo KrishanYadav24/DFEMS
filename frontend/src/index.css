@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #F5F7FA;
+  --color-surface: #FFFFFF;
+  --color-text: #172033;
+  --color-muted: #667085;
+  --color-border: #E3E8EF;
+  --color-sidebar: #111827;
+  --color-sidebar-hover: #1D2939;
+  --color-primary: #356AE6;
+  --color-primary-hover: #2954B8;
+  --color-success: #16805D;
+  --color-warning: #B7791F;
+  --color-error: #C63D4F;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar for modern enterprise look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D0D5DD;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #98A2B3;
+}
+
+/* Tabular numerals for statistics & tables */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Monospaced technical identifiers & SHA-256 hashes */
+.hash-font {
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: -0.02em;
+}
