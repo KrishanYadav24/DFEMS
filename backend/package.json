@@ -1,0 +1,29 @@
+{
+  "name": "dfems-backend",
+  "version": "1.0.0",
+  "description": "Digital Forensic Evidence Management System (DFEMS) — Express Backend & Oracle 26ai Driver",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test:db": "node tests/testConnection.js"
+  },
+  "keywords": [
+    "dfems",
+    "digital-forensics",
+    "oracle-26ai",
+    "oracledb",
+    "express"
+  ],
+  "author": "Krishan Yadav (25BRS1220)",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "oracledb": "^6.8.0"
+  }
+}
