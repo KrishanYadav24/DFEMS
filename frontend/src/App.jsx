@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AppLayout from './components/layout/AppLayout';
+import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import CasesPage from './pages/CasesPage';
 import EvidencePage from './pages/EvidencePage';
@@ -9,6 +10,8 @@ import AnalyticsDbmsPage from './pages/AnalyticsDbmsPage';
 import ReportsPage from './pages/ReportsPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import UserManagementPage from './pages/UserManagementPage';
+
+import { authService } from './services/authService';
 
 import {
   INITIAL_USERS,
@@ -21,17 +24,14 @@ import {
 } from './services/placeholderData';
 
 export default function App() {
-  // Navigation & Role State
-  const [activePage, setActivePage] = useState('dashboard');
-  const [currentUser, setCurrentUser] = useState({
-    id: 9,
-    firstName: 'Vikram',
-    lastName: 'Shah',
-    username: 'vikram.shah',
-    role: 'Admin',
-  });
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState(() => authService.isAuthenticated());
+  const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser());
 
-  // Central Application State
+  // Navigation State
+  const [activePage, setActivePage] = useState('dashboard');
+
+  // Application Data State
   const [users, setUsers] = useState(INITIAL_USERS);
   const [cases, setCases] = useState(INITIAL_CASES);
   const [evidence, setEvidence] = useState(INITIAL_EVIDENCE);
@@ -40,34 +40,29 @@ export default function App() {
   const [staleAlerts] = useState(INITIAL_STALE_ALERTS);
   const [auditLogs, setAuditLogs] = useState(INITIAL_AUDIT_LOGS);
 
-  // Role Switcher Handler
-  const handleRoleChange = (newRole) => {
-    // Select an appropriate sample user for that role
-    const matchedUser = users.find((u) => u.role === newRole) || {
-      id: 99,
-      firstName: 'Demo',
-      lastName: newRole,
-      username: `demo.${newRole.toLowerCase().replace(/\s+/g, '_')}`,
-      role: newRole,
+  // Listen for session expiry from API interceptor
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setIsAuthenticated(false);
+      setCurrentUser(null);
     };
 
-    setCurrentUser({
-      ...matchedUser,
-      role: newRole,
-    });
+    window.addEventListener('dfems_auth_expired', handleAuthExpired);
+    return () => window.removeEventListener('dfems_auth_expired', handleAuthExpired);
+  }, []);
 
-    // Log the role elevation/switch into immutable audit trail
-    const auditEntry = {
-      id: Date.now(),
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      actor: currentUser.username,
-      role: newRole,
-      eventType: 'ROLE_SWITCHED',
-      ip: '127.0.0.1 (Demo Session)',
-      details: `Active role profile switched to ${newRole} for demonstration inspection`,
-      status: 'SUCCESS',
-    };
-    setAuditLogs((prev) => [auditEntry, ...prev]);
+  // Login Handler
+  const handleLoginSuccess = (user) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    setActivePage('dashboard');
+  };
+
+  // Logout Handler
+  const handleLogout = async () => {
+    await authService.logout();
+    setIsAuthenticated(false);
+    setCurrentUser(null);
   };
 
   // State Mutators with Audit Trail Logging
@@ -76,8 +71,8 @@ export default function App() {
     const auditEntry = {
       id: Date.now(),
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      actor: currentUser.username,
-      role: currentUser.role,
+      actor: currentUser?.username || 'user',
+      role: currentUser?.role || 'Investigator',
       eventType: 'CASE_REGISTERED',
       ip: '127.0.0.1',
       details: `Created Case #${newCase.id} titled "${newCase.title}" (${newCase.crimeType})`,
@@ -97,18 +92,18 @@ export default function App() {
       caseTitle: newEvidence.caseTitle || `Case #${newEvidence.caseId}`,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
       action: 'Seized and intake logged',
-      actor: `${currentUser.firstName} ${currentUser.lastName}`,
+      actor: currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : 'Investigator',
     };
     setCustody((prev) => [initialCustodyEvent, ...prev]);
 
     const auditEntry = {
       id: Date.now(),
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      actor: currentUser.username,
-      role: currentUser.role,
-      eventType: 'EVIDENCE_REGISTERED',
+      actor: currentUser?.username || 'user',
+      role: currentUser?.role || 'Investigator',
+      eventType: 'EVIDENCE_SEIZED',
       ip: '127.0.0.1',
-      details: `Intake registered for Evidence #${newEvidence.id} (${newEvidence.type}) with SHA-256 digest ${newEvidence.hash.substring(0, 16)}...`,
+      details: `Intake logged for Evidence #${newEvidence.id} (${newEvidence.description}) with SHA-256 fingerprint`,
       status: 'SUCCESS',
     };
     setAuditLogs((prev) => [auditEntry, ...prev]);
@@ -117,21 +112,23 @@ export default function App() {
   const handleAddCustodyEvent = (newEvent) => {
     setCustody((prev) => [newEvent, ...prev]);
 
-    // Update status in evidence table
-    setEvidence((prev) =>
-      prev.map((e) =>
-        e.id === newEvent.evidenceId ? { ...e, status: newEvent.action } : e
-      )
-    );
+    // If this transfer changed evidence lifecycle status, update evidence table
+    if (newEvent.newStatus) {
+      setEvidence((prev) =>
+        prev.map((e) =>
+          e.id === newEvent.evidenceId ? { ...e, status: newEvent.newStatus } : e
+        )
+      );
+    }
 
     const auditEntry = {
       id: Date.now(),
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      actor: currentUser.username,
-      role: currentUser.role,
-      eventType: 'CUSTODY_TRANSFER',
+      actor: currentUser?.username || 'user',
+      role: currentUser?.role || 'Evidence Custodian',
+      eventType: 'CUSTODY_TRANSFERRED',
       ip: '127.0.0.1',
-      details: `Chain of custody transfer: EV-${newEvent.evidenceId} -> ${newEvent.action} by ${newEvent.actor}`,
+      details: `Transferred Evidence #${newEvent.evidenceId} - "${newEvent.action}"`,
       status: 'SUCCESS',
     };
     setAuditLogs((prev) => [auditEntry, ...prev]);
@@ -140,7 +137,7 @@ export default function App() {
   const handleAddAnalysis = (newAnalysis) => {
     setAnalyses((prev) => [newAnalysis, ...prev]);
 
-    // Update evidence status to Under Analysis
+    // Automatically reflect 'Under Analysis' in evidence state
     setEvidence((prev) =>
       prev.map((e) =>
         e.id === newAnalysis.evidenceId ? { ...e, status: 'Under Analysis' } : e
@@ -150,37 +147,42 @@ export default function App() {
     const auditEntry = {
       id: Date.now(),
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      actor: currentUser.username,
-      role: currentUser.role,
-      eventType: 'ANALYSIS_RECORDED',
+      actor: currentUser?.username || 'user',
+      role: currentUser?.role || 'Forensic Examiner',
+      eventType: 'ANALYSIS_LOGGED',
       ip: '127.0.0.1',
-      details: `Examiner findings recorded for EV-${newAnalysis.evidenceId} by ${newAnalysis.analyst} (${newAnalysis.cert})`,
+      details: `Examination findings filed for Evidence #${newAnalysis.evidenceId}`,
       status: 'SUCCESS',
     };
     setAuditLogs((prev) => [auditEntry, ...prev]);
   };
 
   const handleAddUser = (newUser) => {
-    setUsers((prev) => [...prev, newUser]);
+    setUsers((prev) => [newUser, ...prev]);
     const auditEntry = {
       id: Date.now(),
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      actor: currentUser.username,
-      role: currentUser.role,
-      eventType: 'USER_PERMISSION_MODIFIED',
+      actor: currentUser?.username || 'admin',
+      role: currentUser?.role || 'Admin',
+      eventType: 'USER_PROVISIONED',
       ip: '127.0.0.1',
-      details: `Authorized new personnel ${newUser.firstName} ${newUser.lastName} with role ${newUser.role}`,
+      details: `Provisioned ${newUser.role} credentials for ${newUser.firstName} ${newUser.lastName}`,
       status: 'SUCCESS',
     };
     setAuditLogs((prev) => [auditEntry, ...prev]);
   };
+
+  // If not authenticated, show professional Login Gateway
+  if (!isAuthenticated || !currentUser) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <AppLayout
       activePage={activePage}
       onNavigate={setActivePage}
       currentUser={currentUser}
-      onRoleChange={handleRoleChange}
+      onLogout={handleLogout}
     >
       {activePage === 'dashboard' && (
         <DashboardPage

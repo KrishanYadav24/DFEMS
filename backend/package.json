@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test:db": "node tests/testConnection.js"
+    "test:db": "node tests/testConnection.js",
+    "test:auth": "node tests/auth.test.js",
+    "test": "node tests/auth.test.js"
   },
   "keywords": [
     "dfems",
@@ -23,7 +25,9 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.7.1",
     "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
     "oracledb": "^6.8.0"
   }
 }

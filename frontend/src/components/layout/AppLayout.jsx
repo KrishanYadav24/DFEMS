@@ -6,7 +6,7 @@ export default function AppLayout({
   activePage,
   onNavigate,
   currentUser,
-  onRoleChange,
+  onLogout,
   children,
 }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -28,7 +28,7 @@ export default function AppLayout({
           activePage={activePage}
           onToggleMobile={() => setIsMobileOpen((prev) => !prev)}
           currentUser={currentUser}
-          onRoleChange={onRoleChange}
+          onLogout={onLogout}
         />
 
         <main className="flex-1 p-4 sm:p-7 lg:p-8 max-w-7xl w-full mx-auto">

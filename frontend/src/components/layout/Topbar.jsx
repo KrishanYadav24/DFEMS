@@ -1,11 +1,11 @@
 import React from 'react';
-import { Menu, Database, Shield, ChevronRight, UserCircle2 } from 'lucide-react';
+import { Menu, Database, Shield, ChevronRight, UserCircle2, LogOut } from 'lucide-react';
 
 export default function Topbar({
   onToggleMobile,
   activePage,
   currentUser,
-  onRoleChange,
+  onLogout,
 }) {
   const pageTitles = {
     dashboard: 'Operational Dashboard',
@@ -19,14 +19,9 @@ export default function Topbar({
     users: 'User & Access Administration',
   };
 
-  const roles = [
-    'Admin',
-    'Investigator',
-    'Forensic Examiner',
-    'Evidence Custodian',
-    'Legal Reviewer',
-    'Auditor',
-  ];
+  const displayName = currentUser?.firstName && currentUser?.lastName
+    ? `${currentUser.firstName} ${currentUser.lastName}`
+    : (currentUser?.username || 'User');
 
   return (
     <header className="h-16 bg-app-surface border-b border-app-border sticky top-0 z-20 flex items-center justify-between px-4 sm:px-8">
@@ -50,41 +45,40 @@ export default function Topbar({
         </div>
       </div>
 
-      {/* Right: Status badges, Demo role switcher, Profile */}
+      {/* Right: Status badges, Real user info, Logout button */}
       <div className="flex items-center gap-3 sm:gap-4">
-        {/* Development Placeholder Banner (Honesty Requirement) */}
-        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-[11px] text-blue-800 font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
-          <span>Frontend Foundation Mode (Phase 1)</span>
-        </div>
-
         {/* Oracle DB Connection Badge */}
         <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 font-medium">
           <Database className="w-3 h-3 text-emerald-600" />
-          <span>Oracle 26ai: <span className="font-mono font-semibold">dfems_user</span></span>
+          <span>Oracle 26ai: <span className="font-mono font-semibold">FREEPDB1</span></span>
         </div>
 
-        {/* Live Demo Role Switcher */}
-        <div className="flex items-center gap-1.5 bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
-          <Shield className="w-3.5 h-3.5 text-app-muted shrink-0" />
-          <span className="text-[11px] font-medium text-app-muted hidden sm:inline">Role:</span>
-          <select
-            value={currentUser?.role || 'Admin'}
-            onChange={(e) => onRoleChange(e.target.value)}
-            className="text-xs font-semibold bg-transparent border-none text-app-text focus:outline-none cursor-pointer pr-1"
+        {/* User Identity & Role Badge */}
+        <div className="flex items-center gap-2.5 px-3 py-1 rounded-xl bg-gray-50 border border-gray-200">
+          <UserCircle2 className="w-5 h-5 text-gray-600" />
+          <div className="text-left">
+            <div className="text-xs font-semibold text-gray-900 leading-tight">
+              {displayName}
+            </div>
+            <div className="text-[10px] text-gray-500 font-medium leading-none flex items-center gap-1">
+              <Shield className="w-2.5 h-2.5 text-blue-600" />
+              <span>{currentUser?.role || 'User'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Logout Button */}
+        {onLogout && (
+          <button
+            type="button"
+            onClick={onLogout}
+            title="Log out of DFEMS"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors cursor-pointer"
           >
-            {roles.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* User Avatar */}
-        <div className="flex items-center gap-2 pl-2 border-l border-app-border">
-          <UserCircle2 className="w-7 h-7 text-gray-400" />
-        </div>
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
+        )}
       </div>
     </header>
   );
