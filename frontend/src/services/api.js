@@ -26,10 +26,13 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear expired credentials
-      localStorage.removeItem('dfems_token');
-      localStorage.removeItem('dfems_user');
-      window.dispatchEvent(new Event('dfems_auth_expired'));
+      const requestUrl = error.config?.url || '';
+      // Only trigger session expiration for authenticated session requests, not failed login attempts
+      if (!requestUrl.includes('/auth/login')) {
+        localStorage.removeItem('dfems_token');
+        localStorage.removeItem('dfems_user');
+        window.dispatchEvent(new Event('dfems_auth_expired'));
+      }
     }
     return Promise.reject(error);
   }

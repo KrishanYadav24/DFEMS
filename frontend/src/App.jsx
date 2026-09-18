@@ -12,6 +12,8 @@ import AuditLogsPage from './pages/AuditLogsPage';
 import UserManagementPage from './pages/UserManagementPage';
 
 import { authService } from './services/authService';
+import { caseService } from './services/caseService';
+import { evidenceService } from './services/evidenceService';
 
 import {
   INITIAL_USERS,
@@ -50,6 +52,36 @@ export default function App() {
     window.addEventListener('dfems_auth_expired', handleAuthExpired);
     return () => window.removeEventListener('dfems_auth_expired', handleAuthExpired);
   }, []);
+
+  // Restore profile if token exists but user profile is not hydrated
+  useEffect(() => {
+    if (isAuthenticated && !currentUser) {
+      authService.fetchProfile().then((user) => {
+        if (user) {
+          setCurrentUser(user);
+        } else {
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+        }
+      }).catch(() => {
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+      });
+    }
+  }, [isAuthenticated, currentUser]);
+
+  // Sync cases & evidence from Oracle when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      caseService.getCases().then((data) => {
+        if (data && data.length > 0) setCases(data);
+      }).catch(() => {});
+
+      evidenceService.getEvidence().then((data) => {
+        if (data && data.length > 0) setEvidence(data);
+      }).catch(() => {});
+    }
+  }, [isAuthenticated]);
 
   // Login Handler
   const handleLoginSuccess = (user) => {
@@ -198,6 +230,7 @@ export default function App() {
         <CasesPage
           cases={cases}
           users={users}
+          currentUser={currentUser}
           onAddCase={handleAddCase}
         />
       )}
@@ -206,6 +239,7 @@ export default function App() {
         <EvidencePage
           evidence={evidence}
           cases={cases}
+          currentUser={currentUser}
           onAddEvidence={handleAddEvidence}
         />
       )}

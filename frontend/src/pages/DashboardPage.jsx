@@ -21,32 +21,37 @@ export default function DashboardPage({
   staleAlerts = [],
   onNavigate,
 }) {
+  const safeCases = Array.isArray(cases) ? cases.filter(Boolean) : [];
+  const safeEvidence = Array.isArray(evidence) ? evidence.filter(Boolean) : [];
+  const safeCustody = Array.isArray(custody) ? custody.filter(Boolean) : [];
+  const safeAlerts = Array.isArray(staleAlerts) ? staleAlerts.filter(Boolean) : [];
+
   // KPI Calculations
-  const activeCasesCount = cases.filter((c) => c.status === 'Open' || c.status === 'Under Investigation').length;
-  const underAnalysisCount = evidence.filter((e) => e.status === 'Under Analysis').length;
-  const inStorageCount = evidence.filter((e) => e.status === 'In Storage').length;
+  const activeCasesCount = safeCases.filter((c) => c?.status === 'Open' || c?.status === 'Under Investigation').length;
+  const underAnalysisCount = safeEvidence.filter((e) => e?.status === 'Under Analysis').length;
+  const inStorageCount = safeEvidence.filter((e) => e?.status === 'In Storage').length;
 
   // Evidence Status Chart Data
   const evidenceStatusData = [
-    { name: 'Under Analysis', count: evidence.filter((e) => e.status === 'Under Analysis').length, color: '#356AE6' },
+    { name: 'Under Analysis', count: underAnalysisCount, color: '#356AE6' },
     { name: 'In Storage', count: inStorageCount, color: '#B7791F' },
-    { name: 'Court Presented', count: evidence.filter((e) => e.status === 'Presented in Court').length, color: '#16805D' },
-    { name: 'Archived', count: evidence.filter((e) => e.status === 'Archived').length, color: '#667085' },
-    { name: 'Collected', count: evidence.filter((e) => e.status === 'Collected').length, color: '#6366F1' },
+    { name: 'Court Presented', count: safeEvidence.filter((e) => e?.status === 'Presented in Court').length, color: '#16805D' },
+    { name: 'Archived', count: safeEvidence.filter((e) => e?.status === 'Archived').length, color: '#667085' },
+    { name: 'Collected', count: safeEvidence.filter((e) => e?.status === 'Collected').length, color: '#6366F1' },
   ];
 
   // Case Status Chart Data
   const caseStatusData = [
-    { name: 'Under Investigation', value: cases.filter((c) => c.status === 'Under Investigation').length, color: '#356AE6' },
-    { name: 'Open', value: cases.filter((c) => c.status === 'Open').length, color: '#10B981' },
-    { name: 'Closed', value: cases.filter((c) => c.status === 'Closed').length, color: '#94A3B8' },
+    { name: 'Under Investigation', value: safeCases.filter((c) => c?.status === 'Under Investigation').length, color: '#356AE6' },
+    { name: 'Open', value: safeCases.filter((c) => c?.status === 'Open').length, color: '#10B981' },
+    { name: 'Closed', value: safeCases.filter((c) => c?.status === 'Closed').length, color: '#94A3B8' },
   ];
 
   return (
     <div className="space-y-6">
       {/* Top Banner Alert for Stale Evidence (Oracle Cursor Output) */}
       <StaleAlertBanner
-        alerts={staleAlerts}
+        alerts={safeAlerts}
         onNavigate={() => onNavigate('evidence')}
       />
 
@@ -213,7 +218,7 @@ export default function DashboardPage({
           }
         >
           <div className="divide-y divide-app-border -mx-5 -mb-5">
-            {custody.slice(0, 5).map((log) => (
+            {safeCustody.slice(0, 5).map((log) => (
               <div key={log.id} className="px-5 py-3 hover:bg-gray-50/60 transition-colors flex items-center justify-between text-xs">
                 <div className="flex items-start gap-3">
                   <div className="w-2 h-2 rounded-full bg-app-primary mt-1.5 shrink-0" />

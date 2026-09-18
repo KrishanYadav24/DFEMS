@@ -18,7 +18,8 @@ export const authService = {
       return user;
     }
 
-    throw new Error(response.data?.error || 'Authentication failed.');
+    const errDetail = response.data?.error?.message || response.data?.error || 'Authentication failed.';
+    throw new Error(typeof errDetail === 'string' ? errDetail : JSON.stringify(errDetail));
   },
 
   /**

@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
-import { Plus, ShieldCheck, HardDrive, FileCode, CheckCircle2, AlertOctagon } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Plus, 
+  ShieldCheck, 
+  HardDrive, 
+  FileCode, 
+  CheckCircle2, 
+  AlertOctagon, 
+  RefreshCw, 
+  Eye, 
+  Edit3, 
+  Clock, 
+  Hash
+} from 'lucide-react';
 import PageHeader from '../components/layout/PageHeader';
 import DataTable from '../components/ui/DataTable';
 import Badge from '../components/ui/Badge';
@@ -7,87 +19,238 @@ import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
+import Alert from '../components/ui/Alert';
+import LoadingSkeleton from '../components/ui/LoadingSkeleton';
+import EmptyState from '../components/ui/EmptyState';
 import IntegrityBadge from '../components/shared/IntegrityBadge';
+import { evidenceService } from '../services/evidenceService';
+import { caseService } from '../services/caseService';
 
 export default function EvidencePage({
-  evidence = [],
-  cases = [],
+  evidence: initialEvidence = [],
+  cases: propCases = [],
+  currentUser = null,
   onAddEvidence,
 }) {
-  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
-  const [verifyItem, setVerifyItem] = useState(null);
-  const [testHashInput, setTestHashInput] = useState('');
-  const [verificationResult, setVerificationResult] = useState(null);
+  const [evidenceList, setEvidenceList] = useState(initialEvidence);
+  const [casesList, setCasesList] = useState(propCases);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
+
+  // Filters
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
 
+  // Modals
+  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [verifyItem, setVerifyItem] = useState(null);
+  const [testHashInput, setTestHashInput] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState(null);
+
   // Intake Form State
-  const [description, setDescription] = useState('');
-  const [caseId, setCaseId] = useState('1');
+  const [desc, setDesc] = useState('');
+  const [caseId, setCaseId] = useState('');
   const [evidenceType, setEvidenceType] = useState('Device');
   const [serialNumber, setSerialNumber] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [fileSize, setFileSize] = useState('2048');
+  const [mimeType, setMimeType] = useState('application/octet-stream');
   const [hashValue, setHashValue] = useState('');
   const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  // Filtering
-  const filteredEvidence = evidence.filter((item) => {
-    const matchesStatus = statusFilter === 'ALL' || item.status.toLowerCase() === statusFilter.toLowerCase();
-    const matchesType = typeFilter === 'ALL' || item.type.toLowerCase() === typeFilter.toLowerCase();
-    return matchesStatus && matchesType;
-  });
+  // Edit Metadata State
+  const [editDesc, setEditDesc] = useState('');
+  const [editStatus, setEditStatus] = useState('Collected');
+  const [editError, setEditError] = useState('');
 
-  const handleRegisterSubmit = (e) => {
-    e.preventDefault();
-    if (!description.trim()) {
-      setFormError('Evidence description is required.');
-      return;
+  // RBAC permissions
+  const userRole = currentUser?.role || 'Investigator';
+  const canIntake = ['Admin', 'Investigator'].includes(userRole);
+  const canEdit = ['Admin', 'Investigator'].includes(userRole);
+
+  const fetchEvidence = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await evidenceService.getEvidence({
+        status: statusFilter !== 'ALL' ? statusFilter : undefined,
+        type: typeFilter !== 'ALL' ? typeFilter : undefined,
+      });
+      setEvidenceList(data);
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.response?.data?.message || err.message || 'Failed to load evidence records from Oracle.';
+      setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setLoading(false);
     }
+  }, [statusFilter, typeFilter]);
 
-    const linkedCase = cases.find((c) => String(c.id) === String(caseId));
-    // Generate sample pseudo-SHA256 if empty
-    const generatedHash = hashValue.trim() || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  // Load available cases for intake dropdown if not passed
+  const fetchCasesForSelect = useCallback(async () => {
+    try {
+      const casesData = await caseService.getCases();
+      setCasesList(casesData);
+      if (casesData.length > 0 && !caseId) {
+        setCaseId(String(casesData[0].id));
+      }
+    } catch (err) {
+      console.error('Error loading cases for selection:', err);
+    }
+  }, [caseId]);
 
-    const newItem = {
-      id: evidence.length + 1,
-      description: description.trim(),
-      collectionDate: new Date().toISOString().split('T')[0],
-      caseId: Number(caseId),
-      caseTitle: linkedCase ? linkedCase.title : 'Unassigned Case',
-      status: 'Collected',
-      type: evidenceType,
-      serial: evidenceType === 'Device' ? (serialNumber || 'GEN-DEV-001') : null,
-      hash: generatedHash,
-      integrityStatus: 'VERIFIED',
-    };
+  useEffect(() => {
+    fetchEvidence();
+    fetchCasesForSelect();
+  }, [fetchEvidence, fetchCasesForSelect]);
 
-    onAddEvidence(newItem);
-    setIsRegisterOpen(false);
-    setDescription('');
+  // Open Intake Modal
+  const handleOpenRegister = () => {
+    setDesc('');
+    if (casesList.length > 0) {
+      setCaseId(String(casesList[0].id));
+    }
+    setEvidenceType('Device');
     setSerialNumber('');
-    setHashValue('');
+    setFileName('');
+    setFileSize('4096');
+    setMimeType('application/octet-stream');
+    // Generate valid 64-char sample SHA-256
+    const randomHex = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+    setHashValue(randomHex);
     setFormError('');
+    setIsRegisterOpen(true);
   };
 
+  // Open Details Modal
+  const handleViewDetails = async (item) => {
+    setSelectedItem(item);
+    setDetailsLoading(true);
+    try {
+      const detailed = await evidenceService.getEvidenceById(item.id);
+      if (detailed) {
+        setSelectedItem(detailed);
+      }
+    } catch (err) {
+      console.error('Error fetching evidence details:', err);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  // Open Edit Modal
+  const handleOpenEdit = (item) => {
+    setEditingItem(item);
+    setEditDesc(item.description || '');
+    setEditStatus(item.status || 'Collected');
+    setEditError('');
+  };
+
+  // Open Hash Verification Modal
   const handleOpenVerify = (item) => {
     setVerifyItem(item);
-    setTestHashInput(item.hash);
+    setTestHashInput(item.hash || '');
     setVerificationResult(null);
   };
 
-  const runHashCheck = () => {
-    if (!verifyItem) return;
-    if (testHashInput.trim() === verifyItem.hash) {
-      setVerificationResult({
-        status: 'MATCH',
-        message: 'MATCH: Cryptographic SHA-256 checksum matches intake value. Zero tampering detected.',
-        isMatch: true,
+  // Submit Intake Form
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    if (!desc.trim()) {
+      setFormError('Evidence description is required.');
+      return;
+    }
+    if (!caseId) {
+      setFormError('An associated case must be selected.');
+      return;
+    }
+    if (!hashValue || hashValue.trim().length !== 64) {
+      setFormError('A valid 64-character hexadecimal SHA-256 hash is required.');
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError('');
+    try {
+      const payload = {
+        description: desc.trim(),
+        caseId: parseInt(caseId, 10),
+        type: evidenceType,
+        serial: evidenceType === 'Device' ? serialNumber.trim() : null,
+        fileName: evidenceType === 'File' ? fileName.trim() : null,
+        fileSize: evidenceType === 'File' ? parseInt(fileSize, 10) : null,
+        mimeType: evidenceType === 'File' ? mimeType.trim() : null,
+        hash: hashValue.trim(),
+      };
+
+      const result = await evidenceService.registerEvidence(payload);
+      setSuccessMsg(`Evidence #${result.evidenceId} registered and initial custody locked in Oracle.`);
+      setIsRegisterOpen(false);
+      await fetchEvidence();
+      if (onAddEvidence) onAddEvidence(result);
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.response?.data?.message || err.message || 'Error executing evidence intake.';
+      setFormError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Submit Edit Metadata Form
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editDesc.trim()) {
+      setEditError('Description cannot be empty.');
+      return;
+    }
+
+    setSubmitting(true);
+    setEditError('');
+    try {
+      await evidenceService.updateEvidence(editingItem.id, {
+        description: editDesc.trim(),
+        status: editStatus,
       });
-    } else {
+
+      setSuccessMsg(`Evidence #${editingItem.id} metadata updated successfully.`);
+      setEditingItem(null);
+      await fetchEvidence();
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.response?.data?.message || err.message || 'Error updating evidence metadata.';
+      setEditError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Execute Cryptographic Hash Verification via Oracle fn_verify_hash
+  const handleRunVerification = async () => {
+    if (!verifyItem || !testHashInput) return;
+    setVerifying(true);
+    setVerificationResult(null);
+    try {
+      const response = await evidenceService.verifyHash(verifyItem.id, testHashInput.trim());
       setVerificationResult({
-        status: 'MISMATCH',
-        message: 'MISMATCH - POSSIBLE TAMPERING: Checksum deviates from original intake baseline!',
+        status: response.status,
+        outcome: response.outcome,
+        isMatch: response.intact,
+        message: response.message,
+      });
+    } catch (err) {
+      const errMsg = err.response?.data?.error?.message || err.response?.data?.message || err.message || 'Verification execution failed in Oracle engine.';
+      setVerificationResult({
+        status: 'ERROR',
+        outcome: 'ERROR',
         isMatch: false,
+        message: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg),
       });
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -105,7 +268,7 @@ export default function EvidencePage({
       render: (row) => (
         <div>
           <span className="font-semibold text-app-text block">{row.description}</span>
-          <span className="text-[11px] text-app-muted">{row.caseTitle}</span>
+          <span className="text-[11px] text-app-muted">{row.caseTitle || `Case #${row.caseId}`}</span>
         </div>
       ),
     },
@@ -145,7 +308,7 @@ export default function EvidencePage({
       render: (row) => (
         <IntegrityBadge
           hash={row.hash}
-          status={row.integrityStatus}
+          status={row.integrityStatus || 'VERIFIED'}
           showHash={true}
           onVerify={() => handleOpenVerify(row)}
         />
@@ -156,14 +319,34 @@ export default function EvidencePage({
       field: 'actions',
       sortable: false,
       render: (row) => (
-        <Button
-          size="sm"
-          variant="outline"
-          icon={ShieldCheck}
-          onClick={() => handleOpenVerify(row)}
-        >
-          Verify
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Eye}
+            onClick={() => handleViewDetails(row)}
+          >
+            Details
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={ShieldCheck}
+            onClick={() => handleOpenVerify(row)}
+          >
+            Verify
+          </Button>
+          {canEdit && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Edit3}
+              onClick={() => handleOpenEdit(row)}
+            >
+              Edit
+            </Button>
+          )}
+        </div>
       ),
     },
   ];
@@ -174,11 +357,51 @@ export default function EvidencePage({
         title="Evidence Vault"
         subtitle="Catalog of seized digital physical devices and logical file records in Oracle 26ai"
         actions={
-          <Button icon={Plus} onClick={() => setIsRegisterOpen(true)}>
-            Intake New Evidence
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              icon={RefreshCw}
+              onClick={fetchEvidence}
+              disabled={loading}
+            >
+              Refresh
+            </Button>
+            {canIntake && (
+              <Button icon={Plus} onClick={handleOpenRegister}>
+                Intake New Evidence
+              </Button>
+            )}
+          </div>
         }
       />
+
+      {/* Success Notification */}
+      {successMsg && (
+        <Alert
+          type="success"
+          className="mb-4"
+          onDismiss={() => setSuccessMsg(null)}
+        >
+          {successMsg}
+        </Alert>
+      )}
+
+      {/* Error Alert */}
+      {error && (
+        <Alert
+          type="error"
+          title="Oracle Evidence Vault Error"
+          className="mb-4"
+          onDismiss={() => setError(null)}
+        >
+          <div className="flex items-center justify-between">
+            <span>{error}</span>
+            <Button size="sm" variant="outline" onClick={fetchEvidence} className="ml-4">
+              Retry
+            </Button>
+          </div>
+        </Alert>
+      )}
 
       {/* Filter Toolbar */}
       <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
@@ -215,40 +438,60 @@ export default function EvidencePage({
         ))}
       </div>
 
-      {/* Evidence Table */}
-      <DataTable
-        columns={columns}
-        data={filteredEvidence}
-        keyField="id"
-        searchPlaceholder="Search evidence by description, case, or serial..."
-        searchKeys={['description', 'caseTitle', 'serial', 'type', 'status']}
-      />
+      {/* Evidence Table or Loading */}
+      {loading && evidenceList.length === 0 ? (
+        <div className="bg-white p-6 rounded-xl border border-app-border">
+          <LoadingSkeleton lines={5} />
+        </div>
+      ) : evidenceList.length === 0 ? (
+        <div className="bg-white rounded-xl border border-app-border">
+          <EmptyState
+            title="No evidence items found"
+            description="No digital devices or logical files matching the current filter criteria."
+            actionLabel={canIntake ? 'Intake New Evidence' : null}
+            onAction={canIntake ? handleOpenRegister : null}
+          />
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={evidenceList}
+          keyField="id"
+          searchPlaceholder="Search evidence by description, case, or serial..."
+          searchKeys={['description', 'caseTitle', 'serial', 'type', 'status']}
+        />
+      )}
 
       {/* Evidence Registration Modal */}
       <Modal
         isOpen={isRegisterOpen}
         onClose={() => setIsRegisterOpen(false)}
         title="Evidence Intake & Registration"
-        subtitle="Executes PL/SQL procedure sp_register_evidence with atomic custody initialization"
+        subtitle="Executes atomic transaction across EVIDENCE, DEVICE/FILE, and CHAIN_OF_CUSTODY in Oracle"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setIsRegisterOpen(false)}>
+            <Button variant="secondary" onClick={() => setIsRegisterOpen(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={handleRegisterSubmit}>
-              Register Evidence
+            <Button onClick={handleRegisterSubmit} disabled={submitting}>
+              {submitting ? 'Registering...' : 'Register Evidence'}
             </Button>
           </>
         }
       >
         <form onSubmit={handleRegisterSubmit} className="space-y-4">
+          {formError && (
+            <Alert type="error" className="py-2 text-xs">
+              {formError}
+            </Alert>
+          )}
+
           <Input
             label="Evidence Item Description"
             required
             placeholder="e.g. Seized encrypted NVMe drive from primary server"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            error={formError}
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
           />
 
           <Select
@@ -256,8 +499,8 @@ export default function EvidencePage({
             required
             value={caseId}
             onChange={(e) => setCaseId(e.target.value)}
-            options={cases.map((c) => ({
-              value: c.id,
+            options={casesList.map((c) => ({
+              value: String(c.id),
               label: `Case #${c.id}: ${c.title}`,
             }))}
           />
@@ -270,25 +513,182 @@ export default function EvidencePage({
               options={['Device', 'File']}
             />
 
-            {evidenceType === 'Device' && (
+            {evidenceType === 'Device' ? (
               <Input
                 label="Hardware Serial Number"
                 placeholder="e.g. DELL-SRV-9012"
                 value={serialNumber}
                 onChange={(e) => setSerialNumber(e.target.value)}
               />
+            ) : (
+              <Input
+                label="File Name"
+                placeholder="e.g. memory_dump.raw"
+                value={fileName}
+                onChange={(e) => setFileName(e.target.value)}
+              />
             )}
           </div>
 
           <Input
             label="Intake SHA-256 Checksum"
-            placeholder="Calculated automatically if omitted"
+            required
+            placeholder="64-character hexadecimal SHA-256 hash"
             value={hashValue}
             onChange={(e) => setHashValue(e.target.value)}
-            helperText="64-character hexadecimal SHA-256 hash calculated at evidence intake"
+            helperText="Cryptographic digest calculated at the point of forensic seizure (immutable)"
           />
         </form>
       </Modal>
+
+      {/* Edit Evidence Metadata Modal */}
+      {editingItem && (
+        <Modal
+          isOpen={Boolean(editingItem)}
+          onClose={() => setEditingItem(null)}
+          title={`Edit Metadata: Evidence #${editingItem.id}`}
+          subtitle="Update permitted metadata and lifecycle status (hash is legally immutable)"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setEditingItem(null)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditSubmit} disabled={submitting}>
+                {submitting ? 'Saving...' : 'Save Metadata'}
+              </Button>
+            </>
+          }
+        >
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            {editError && (
+              <Alert type="error" className="py-2 text-xs">
+                {editError}
+              </Alert>
+            )}
+
+            <Input
+              label="Evidence Description"
+              required
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
+            />
+
+            <Select
+              label="Lifecycle Status"
+              value={editStatus}
+              onChange={(e) => setEditStatus(e.target.value)}
+              options={[
+                'Collected',
+                'In Storage',
+                'Under Analysis',
+                'Presented in Court',
+                'Archived',
+                'Disposed',
+              ]}
+            />
+
+            <div className="p-3 bg-gray-50 rounded-lg border border-app-border text-xs">
+              <span className="text-app-muted block font-medium mb-1">Stored SHA-256 Hash (Read-Only):</span>
+              <p className="font-mono text-gray-700 bg-white p-2 rounded border border-gray-200 break-all">
+                {editingItem.hash}
+              </p>
+              <span className="text-[11px] text-amber-700 mt-1 block">
+                * Cryptographic fingerprints cannot be modified after initial intake.
+              </span>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Evidence Details Modal */}
+      {selectedItem && (
+        <Modal
+          isOpen={Boolean(selectedItem)}
+          onClose={() => setSelectedItem(null)}
+          title={`Evidence Dossier: #${selectedItem.id}`}
+          subtitle={`Seized in connection with ${selectedItem.caseTitle || `Case #${selectedItem.caseId}`}`}
+          footer={
+            <Button onClick={() => setSelectedItem(null)}>
+              Close
+            </Button>
+          }
+        >
+          {detailsLoading ? (
+            <LoadingSkeleton lines={4} />
+          ) : (
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg border border-app-border">
+                <div>
+                  <span className="text-app-muted block">Status</span>
+                  <Badge status={selectedItem.status} dot size="sm" className="mt-1" />
+                </div>
+                <div>
+                  <span className="text-app-muted block">Classification</span>
+                  <span className="font-semibold text-app-text mt-1 block">{selectedItem.type}</span>
+                </div>
+                <div>
+                  <span className="text-app-muted block">Collection Date</span>
+                  <span className="font-semibold text-app-text mt-1 block">{selectedItem.collectionDate}</span>
+                </div>
+                <div>
+                  <span className="text-app-muted block">Associated Case</span>
+                  <span className="font-semibold text-app-text mt-1 block">#{selectedItem.caseId}</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-app-muted block mb-1 font-medium">Description:</span>
+                <p className="text-xs text-gray-800 bg-white p-2.5 rounded border border-app-border">
+                  {selectedItem.description}
+                </p>
+              </div>
+
+              <div>
+                <span className="text-app-muted block mb-1 font-medium flex items-center gap-1">
+                  <Hash className="w-3.5 h-3.5 text-app-primary" />
+                  Intake SHA-256 Hash Digest:
+                </span>
+                <p className="font-mono text-xs bg-white p-2.5 rounded border border-app-border break-all text-gray-800 font-medium">
+                  {selectedItem.hash}
+                </p>
+              </div>
+
+              {/* Chain of Custody Trail */}
+              <div className="border-t border-app-border pt-3">
+                <span className="font-semibold text-app-text flex items-center gap-1.5 mb-2">
+                  <Clock className="w-4 h-4 text-app-primary" />
+                  Chain of Custody Events ({selectedItem.custodyTrail ? selectedItem.custodyTrail.length : 0})
+                </span>
+
+                {selectedItem.custodyTrail && selectedItem.custodyTrail.length > 0 ? (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {selectedItem.custodyTrail.map((c) => (
+                      <div
+                        key={c.id}
+                        className="p-2.5 rounded-lg border border-app-border bg-white flex items-start justify-between"
+                      >
+                        <div>
+                          <span className="font-medium text-gray-900 block">{c.action}</span>
+                          <span className="text-[11px] text-app-muted block mt-0.5">
+                            Handled by: <strong className="text-gray-700">{c.actor}</strong> ({c.actorRole || 'Custodian'})
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono text-gray-500 tabular-nums">
+                          {c.timestamp}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-app-muted text-xs italic bg-gray-50 p-2.5 rounded border border-dashed border-gray-300 text-center">
+                    No transfer events recorded yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
 
       {/* Hash Verification Modal */}
       {verifyItem && (
@@ -296,7 +696,7 @@ export default function EvidencePage({
           isOpen={Boolean(verifyItem)}
           onClose={() => setVerifyItem(null)}
           title={`Cryptographic Verification: Evidence #${verifyItem.id}`}
-          subtitle="Tests Oracle function fn_verify_hash for evidence integrity assurance"
+          subtitle="Executes Oracle PL/SQL function fn_verify_hash for evidence integrity validation"
           footer={
             <Button onClick={() => setVerifyItem(null)}>
               Done
@@ -312,7 +712,7 @@ export default function EvidencePage({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-app-text font-medium block">Test / Current Hash to Compare:</label>
+              <label className="text-app-text font-medium block">Verification Test Hash to Compare:</label>
               <textarea
                 rows={2}
                 value={testHashInput}
@@ -321,13 +721,14 @@ export default function EvidencePage({
                 placeholder="Paste SHA-256 hash to test integrity..."
               />
               <div className="flex gap-2 pt-1">
-                <Button size="sm" onClick={runHashCheck}>
-                  Execute fn_verify_hash
+                <Button size="sm" onClick={handleRunVerification} disabled={verifying}>
+                  {verifying ? 'Verifying in Oracle...' : 'Execute fn_verify_hash'}
                 </Button>
                 <Button 
                   size="sm" 
                   variant="secondary" 
                   onClick={() => setTestHashInput('0000000000000000000000000000000000000000000000000000000000000000')}
+                  disabled={verifying}
                 >
                   Simulate Tampering (Altered Hash)
                 </Button>
@@ -347,7 +748,7 @@ export default function EvidencePage({
                 )}
                 <div>
                   <span className="font-bold uppercase tracking-wider block text-[11px]">
-                    Result: {verificationResult.status}
+                    Result: {verificationResult.status} ({verificationResult.outcome})
                   </span>
                   <p className="mt-0.5 leading-relaxed">{verificationResult.message}</p>
                 </div>

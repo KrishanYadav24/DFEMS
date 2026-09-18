@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { getEvidence, getEvidenceById, registerEvidence, verifyHash } from '../controllers/evidenceController.js';
+import { 
+  getEvidence, 
+  getEvidenceById, 
+  registerEvidence, 
+  updateEvidence, 
+  verifyHash 
+} from '../controllers/evidenceController.js';
 import { validateBody, validateNumericId } from '../middleware/validate.js';
 import { authenticateToken, requireRoles } from '../middleware/auth.js';
 
@@ -17,6 +23,14 @@ router.post(
   requireRoles('Admin', 'Investigator'),
   validateBody(['description', 'caseId', 'hashValue']),
   registerEvidence
+);
+
+// Update permitted evidence metadata (description, status): Admin and Investigator
+router.put(
+  '/:id',
+  requireRoles('Admin', 'Investigator'),
+  validateNumericId('id'),
+  updateEvidence
 );
 
 // Hash verification: Admin, Investigator, Forensic Examiner, Lab Technician, Auditor

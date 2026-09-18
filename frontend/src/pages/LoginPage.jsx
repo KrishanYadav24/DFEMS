@@ -26,7 +26,19 @@ export default function LoginPage({ onLoginSuccess }) {
         onLoginSuccess(user);
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.message || 'Authentication failed. Please verify your credentials.';
+      let msg = 'Authentication failed. Please verify your credentials.';
+      const errPayload = err.response?.data?.error;
+      if (errPayload) {
+        if (typeof errPayload === 'string') {
+          msg = errPayload;
+        } else if (typeof errPayload.message === 'string') {
+          msg = errPayload.message;
+        }
+      } else if (typeof err.response?.data?.message === 'string') {
+        msg = err.response.data.message;
+      } else if (err.message && typeof err.message === 'string') {
+        msg = err.message;
+      }
       setErrorMessage(msg);
     } finally {
       setIsLoading(false);

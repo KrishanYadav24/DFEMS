@@ -32,9 +32,12 @@ export default function Sidebar({
     { id: 'users', label: 'User Directory', icon: Users, roles: ['Admin'] },
   ];
 
-  // Filter items by role
-  const userRole = currentUser?.role || 'Admin';
-  const visibleItems = navItems.filter((item) => item.roles.includes(userRole));
+  // Filter items by role (normalizing synonyms such as Lab Technician <-> Forensic Examiner)
+  const rawRole = currentUser?.role || 'Admin';
+  const userRole = (rawRole.toLowerCase() === 'lab technician' || rawRole.toLowerCase() === 'lab_technician')
+    ? 'Forensic Examiner'
+    : rawRole;
+  const visibleItems = navItems.filter((item) => item.roles.some((r) => r.toLowerCase() === userRole.toLowerCase()));
 
   const content = (
     <div className="flex flex-col h-full bg-app-sidebar text-white select-none">

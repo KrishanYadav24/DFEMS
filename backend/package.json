@@ -9,7 +9,9 @@
     "dev": "node --watch src/server.js",
     "test:db": "node tests/testConnection.js",
     "test:auth": "node tests/auth.test.js",
-    "test": "node tests/auth.test.js"
+    "test:crud": "node tests/crud.test.js",
+    "test": "node tests/auth.test.js && node tests/crud.test.js",
+    "reset-password": "node scripts/resetPassword.js"
   },
   "keywords": [
     "dfems",
