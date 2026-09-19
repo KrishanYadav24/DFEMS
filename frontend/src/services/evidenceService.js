@@ -63,6 +63,47 @@ export const evidenceService = {
   },
 
   /**
+   * Uploads raw evidence file (computes SHA-256 byte hash, seals in vault).
+   */
+  async uploadEvidence(formData) {
+    const response = await api.post('/evidence/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data?.data || null;
+  },
+
+  /**
+   * Downloads physical evidence file from secure vault.
+   */
+  async downloadEvidenceFile(id, fileName = 'evidence_file') {
+    const response = await api.get(`/evidence/${id}/file`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([response.data], {
+      type: response.headers['content-type'] || 'application/octet-stream',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Re-verifies physical file on disk by recomputing SHA-256 from actual bytes
+   * and executing Oracle function fn_verify_hash.
+   */
+  async verifyEvidenceFile(id) {
+    const response = await api.post(`/evidence/${id}/verify-file`);
+    return response.data?.data || null;
+  },
+
+  /**
    * Updates permitted evidence metadata (description, status).
    */
   async updateEvidence(id, updateData) {

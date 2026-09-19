@@ -16,6 +16,10 @@ build/
 # Runtime and log directories
 logs/
 *.log
+backend/vault/evidence/*
+!backend/vault/evidence/.gitkeep
+vault/evidence/*
+!vault/evidence/.gitkeep
 
 # Editor & OS files
 .vscode/

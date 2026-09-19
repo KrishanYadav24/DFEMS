@@ -1,7 +1,9 @@
+import fs from 'fs';
 import oracledb from 'oracledb';
 import { query, withTransaction } from '../config/database.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { logger } from '../utils/logger.js';
+import { computeBytesHash, computeFileHashFromDisk, storeVaultFile, resolveVaultPath } from '../utils/vault.js';
 
 const VALID_EVIDENCE_STATUSES = [
   'Collected',
@@ -458,6 +460,346 @@ export async function updateEvidence(req, res, next) {
 }
 
 /**
+ * POST /api/evidence/upload
+ * Multi-part file intake: computes SHA-256 hash strictly from file bytes,
+ * stores the file in the isolated evidence vault, and writes atomic records
+ * to EVIDENCE, FILE_RECORD, CHAIN_OF_CUSTODY, and AUDIT_LOG.
+ */
+export async function uploadEvidence(req, res, next) {
+  try {
+    const { description, caseId } = req.body;
+    const file = req.file;
+    const user = req.user;
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '127.0.0.1';
+
+    if (!file || !file.buffer) {
+      return apiResponse.error(res, 'No evidence file uploaded.', 'VALIDATION_ERROR', null, 400);
+    }
+    if (!description || !description.trim()) {
+      return apiResponse.error(res, 'Evidence description is required.', 'VALIDATION_ERROR', null, 400);
+    }
+    if (!caseId) {
+      return apiResponse.error(res, 'Parent case ID is required.', 'VALIDATION_ERROR', null, 400);
+    }
+
+    const cId = parseInt(caseId, 10);
+    if (isNaN(cId)) {
+      return apiResponse.error(res, 'Case ID must be a valid integer.', 'VALIDATION_ERROR', null, 400);
+    }
+
+    // Verify parent case exists and check investigator assignment
+    const caseCheck = await query(
+      `SELECT Case_ID, Title, Created_By, Assigned_To FROM CASE_TABLE WHERE Case_ID = :caseId`,
+      { caseId: cId }
+    );
+    if (!caseCheck.rows || caseCheck.rows.length === 0) {
+      return apiResponse.error(res, `Referenced Case #${cId} does not exist.`, 'CASE_NOT_FOUND', null, 404);
+    }
+
+    const parentCase = caseCheck.rows[0];
+    if (user.role === 'Investigator') {
+      const isCreator = parentCase.CREATED_BY === user.userId;
+      const isLead = parentCase.ASSIGNED_TO === user.userId;
+      const assignCheck = await query(
+        `SELECT COUNT(*) AS CNT FROM ASSIGNED WHERE Case_ID = :caseId AND User_ID = :userId`,
+        { caseId: parentCase.CASE_ID, userId: user.userId }
+      );
+      const isAssigned = (assignCheck.rows?.[0]?.CNT || 0) > 0;
+
+      if (!isCreator && !isLead && !isAssigned) {
+        return apiResponse.error(
+          res,
+          `Access forbidden: You cannot register evidence to unassigned Case #${cId}.`,
+          'FORBIDDEN',
+          null,
+          403
+        );
+      }
+    }
+
+    // 1. Store file into vault and compute SHA-256 strictly from file bytes
+    const vaultResult = await storeVaultFile(file.buffer, cId, file.originalname);
+
+    // 2. Atomic database insertion
+    const newEvidence = await withTransaction(async (conn) => {
+      // Insert into EVIDENCE
+      const evSql = `
+        INSERT INTO EVIDENCE (
+          Description,
+          Collection_Date,
+          Case_ID,
+          Status,
+          Hash_Value
+        ) VALUES (
+          :description,
+          SYSDATE,
+          :caseId,
+          'Collected',
+          :hashValue
+        ) RETURNING Evidence_ID INTO :outEvId
+      `;
+
+      const evResult = await conn.execute(evSql, {
+        description: description.trim(),
+        caseId: cId,
+        hashValue: vaultResult.sha256,
+        outEvId: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
+      });
+      const generatedEvidenceId = evResult.outBinds.outEvId[0];
+
+      // Insert into FILE_RECORD
+      await conn.execute(
+        `INSERT INTO FILE_RECORD (Evidence_ID, File_Name, File_Path, File_Size, Mime_Type)
+         VALUES (:evidenceId, :fileName, :filePath, :fileSize, :mimeType)`,
+        {
+          evidenceId: generatedEvidenceId,
+          fileName: file.originalname,
+          filePath: vaultResult.filePath,
+          fileSize: vaultResult.fileSize,
+          mimeType: file.mimetype || 'application/octet-stream',
+        }
+      );
+
+      // Insert initial custody record with User_ID
+      await conn.execute(
+        `INSERT INTO CHAIN_OF_CUSTODY (
+          Evidence_ID,
+          Action,
+          User_ID,
+          Timestamp_At
+        ) VALUES (
+          :evidenceId,
+          'Collected at scene - Cryptographically Hashed (SHA-256)',
+          :userId,
+          SYSTIMESTAMP
+        )`,
+        {
+          evidenceId: generatedEvidenceId,
+          userId: user.userId,
+        }
+      );
+
+      // Emit audit log event
+      await conn.execute(
+        `INSERT INTO AUDIT_LOG (
+          User_ID, Action, Entity_Name, Entity_ID, IP_Address, Details
+        ) VALUES (
+          :userId, 'EVIDENCE_FILE_UPLOADED', 'EVIDENCE', :evidenceId, :ip, :details
+        )`,
+        {
+          userId: user.userId,
+          evidenceId: generatedEvidenceId,
+          ip: clientIp,
+          details: `Evidence File "${file.originalname}" (${vaultResult.fileSize} bytes) ingested and hashed (SHA-256: ${vaultResult.sha256}) for Case #${cId} by ${user.username}.`,
+        }
+      );
+
+      return {
+        evidenceId: generatedEvidenceId,
+        description: description.trim(),
+        caseId: cId,
+        status: 'Collected',
+        hashValue: vaultResult.sha256,
+        fileName: file.originalname,
+        fileSize: vaultResult.fileSize,
+        mimeType: file.mimetype,
+        evidenceType: 'File',
+      };
+    });
+
+    return apiResponse.success(
+      res,
+      newEvidence,
+      { message: 'Evidence file ingested, hashed with SHA-256, and sealed in vault.' },
+      201
+    );
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/evidence/:id/file
+ * Downloads raw evidence file from the vault for authorized forensic personnel.
+ */
+export async function downloadEvidenceFile(req, res, next) {
+  try {
+    const evidenceId = parseInt(req.params.id, 10);
+    const user = req.user;
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '127.0.0.1';
+
+    const sql = `
+      SELECT 
+        e.Evidence_ID,
+        e.Case_ID,
+        e.Description,
+        c.Created_By AS Case_Creator,
+        c.Assigned_To AS Case_Lead,
+        f.File_Name,
+        f.File_Path,
+        f.Mime_Type
+      FROM EVIDENCE e
+      JOIN CASE_TABLE c ON e.Case_ID = c.Case_ID
+      JOIN FILE_RECORD f ON e.Evidence_ID = f.Evidence_ID
+      WHERE e.Evidence_ID = :evidenceId
+    `;
+
+    const result = await query(sql, { evidenceId });
+    if (!result.rows || result.rows.length === 0) {
+      return apiResponse.error(res, `No stored file found for Evidence #${evidenceId}.`, 'FILE_NOT_FOUND', null, 404);
+    }
+
+    const row = result.rows[0];
+
+    // Investigator data isolation
+    if (user.role === 'Investigator') {
+      const isCreator = row.CASE_CREATOR === user.userId;
+      const isLead = row.CASE_LEAD === user.userId;
+      const assignCheck = await query(
+        `SELECT COUNT(*) AS CNT FROM ASSIGNED WHERE Case_ID = :caseId AND User_ID = :userId`,
+        { caseId: row.CASE_ID, userId: user.userId }
+      );
+      const isAssigned = (assignCheck.rows?.[0]?.CNT || 0) > 0;
+      if (!isCreator && !isLead && !isAssigned) {
+        return apiResponse.error(res, `Access forbidden to Evidence #${evidenceId}.`, 'FORBIDDEN', null, 403);
+      }
+    }
+
+    let absPath;
+    try {
+      absPath = resolveVaultPath(row.FILE_PATH);
+    } catch (pathErr) {
+      return apiResponse.error(res, pathErr.message, 'VAULT_PATH_ERROR', null, 400);
+    }
+
+    if (!fs.existsSync(absPath)) {
+      return apiResponse.error(res, 'Physical evidence file missing from vault storage.', 'VAULT_FILE_MISSING', null, 404);
+    }
+
+    // Record audit event for sensitive evidence access
+    await query(
+      `INSERT INTO AUDIT_LOG (User_ID, Action, Entity_Name, Entity_ID, IP_Address, Details)
+       VALUES (:userId, 'EVIDENCE_FILE_ACCESSED', 'EVIDENCE', :evidenceId, :ip, :details)`,
+      {
+        userId: user.userId,
+        evidenceId,
+        ip: clientIp,
+        details: `Evidence #${evidenceId} file "${row.FILE_NAME}" downloaded by ${user.username}.`,
+      }
+    );
+
+    res.setHeader('Content-Type', row.MIME_TYPE || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(row.FILE_NAME)}"`);
+    return res.sendFile(absPath);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /api/evidence/:id/verify-file
+ * Recomputes SHA-256 hash strictly from the physical bytes on disk and
+ * verifies against Oracle intake digest via PL/SQL function fn_verify_hash.
+ */
+export async function verifyEvidenceFile(req, res, next) {
+  try {
+    const evidenceId = parseInt(req.params.id, 10);
+    const user = req.user;
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '127.0.0.1';
+
+    // 1. Fetch file record and stored hash from Oracle
+    const sql = `
+      SELECT 
+        e.Evidence_ID,
+        e.Hash_Value,
+        e.Description,
+        f.File_Name,
+        f.File_Path,
+        f.File_Size
+      FROM EVIDENCE e
+      LEFT JOIN FILE_RECORD f ON e.Evidence_ID = f.Evidence_ID
+      WHERE e.Evidence_ID = :evidenceId
+    `;
+
+    const result = await query(sql, { evidenceId });
+    if (!result.rows || result.rows.length === 0) {
+      return apiResponse.error(res, `Evidence #${evidenceId} not found.`, 'NOT_FOUND', null, 404);
+    }
+
+    const row = result.rows[0];
+    if (!row.FILE_PATH) {
+      return apiResponse.error(
+        res,
+        `Evidence #${evidenceId} does not have an associated file record. Use verify-hash for device evidence.`,
+        'NO_FILE_ATTACHED',
+        null,
+        400
+      );
+    }
+
+    let absPath;
+    try {
+      absPath = resolveVaultPath(row.FILE_PATH);
+    } catch (pathErr) {
+      return apiResponse.error(res, pathErr.message, 'VAULT_PATH_ERROR', null, 400);
+    }
+
+    if (!fs.existsSync(absPath)) {
+      // Truthful error reporting: never claim verification succeeded!
+      return apiResponse.error(
+        res,
+        `Physical evidence file "${row.FILE_NAME}" is missing from vault storage. Integrity verification failed.`,
+        'FILE_MISSING',
+        null,
+        404
+      );
+    }
+
+    // 2. Recompute SHA-256 directly from the actual physical bytes on disk
+    const recomputedHash = await computeFileHashFromDisk(absPath);
+
+    // 3. Execute Oracle PL/SQL function fn_verify_hash with recomputed hash
+    const fnResult = await query(
+      `SELECT fn_verify_hash(:evidenceId, :recomputedHash) AS VERIFICATION_OUTCOME FROM DUAL`,
+      { evidenceId, recomputedHash }
+    );
+
+    const outcome = fnResult.rows?.[0]?.VERIFICATION_OUTCOME || 'UNKNOWN';
+    const isMatch = outcome === 'MATCH';
+
+    // 4. Log audit trail
+    await query(
+      `INSERT INTO AUDIT_LOG (User_ID, Action, Entity_Name, Entity_ID, IP_Address, Details)
+       VALUES (:userId, :action, 'EVIDENCE', :evidenceId, :ip, :details)`,
+      {
+        userId: user.userId,
+        action: isMatch ? 'EVIDENCE_INTEGRITY_VERIFIED' : 'EVIDENCE_TAMPER_DETECTED',
+        evidenceId,
+        ip: clientIp,
+        details: isMatch
+          ? `Integrity verified for Evidence #${evidenceId} ("${row.FILE_NAME}") by ${user.username}. SHA-256: ${recomputedHash}.`
+          : `CRITICAL ALERT: Tampering detected on Evidence #${evidenceId} ("${row.FILE_NAME}"). Recomputed: ${recomputedHash}, Intake: ${row.HASH_VALUE}.`,
+      }
+    );
+
+    return apiResponse.success(res, {
+      evidenceId,
+      fileName: row.FILE_NAME,
+      storedHash: row.HASH_VALUE,
+      recomputedHash,
+      outcome,
+      intact: isMatch,
+      status: isMatch ? 'VERIFIED' : 'POSSIBLE_TAMPERING',
+      message: isMatch
+        ? 'SHA-256 checksum recomputed from raw file bytes matches intake hash. Evidentiary integrity verified.'
+        : 'CRITICAL ALERT: Recomputed SHA-256 checksum does NOT match stored intake hash. Possible tampering or media corruption detected.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * POST /api/evidence/:id/verify-hash
  * Calls Oracle database function fn_verify_hash with bind variables.
  */
@@ -465,9 +807,22 @@ export async function verifyHash(req, res, next) {
   try {
     const evidenceId = parseInt(req.params.id, 10);
     const { providedHash } = req.body;
+    const user = req.user;
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '127.0.0.1';
 
-    if (!providedHash) {
+    if (!providedHash || typeof providedHash !== 'string' || !providedHash.trim()) {
       return apiResponse.error(res, 'A hash value must be provided for verification.', 'MISSING_HASH', null, 400);
+    }
+
+    const cleanHash = providedHash.trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/i.test(cleanHash)) {
+      return apiResponse.error(
+        res,
+        'Invalid SHA-256 format. Hash must be exactly 64 hexadecimal characters.',
+        'INVALID_HASH_FORMAT',
+        null,
+        400
+      );
     }
 
     // Call Oracle function fn_verify_hash directly in SQL
@@ -478,15 +833,30 @@ export async function verifyHash(req, res, next) {
 
     const result = await query(sql, {
       evidenceId,
-      providedHash: providedHash.trim(),
+      providedHash: cleanHash,
     });
 
     const outcome = result.rows?.[0]?.VERIFICATION_OUTCOME || 'UNKNOWN';
     const isMatch = outcome === 'MATCH';
 
+    // Log to AUDIT_LOG
+    await query(
+      `INSERT INTO AUDIT_LOG (User_ID, Action, Entity_Name, Entity_ID, IP_Address, Details)
+       VALUES (:userId, :action, 'EVIDENCE', :evidenceId, :ip, :details)`,
+      {
+        userId: user.userId,
+        action: isMatch ? 'EVIDENCE_HASH_VERIFIED' : 'EVIDENCE_HASH_MISMATCH',
+        evidenceId,
+        ip: clientIp,
+        details: isMatch
+          ? `External hash verification MATCH for Evidence #${evidenceId} by ${user.username} (${cleanHash}).`
+          : `External hash verification MISMATCH for Evidence #${evidenceId} by ${user.username} (provided: ${cleanHash}).`,
+      }
+    );
+
     return apiResponse.success(res, {
       evidenceId,
-      providedHash,
+      providedHash: cleanHash,
       outcome,
       intact: isMatch,
       status: isMatch ? 'VERIFIED' : 'POSSIBLE_TAMPERING',
@@ -498,3 +868,4 @@ export async function verifyHash(req, res, next) {
     next(error);
   }
 }
+

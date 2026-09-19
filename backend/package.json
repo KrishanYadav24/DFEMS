@@ -10,7 +10,8 @@
     "test:db": "node tests/testConnection.js",
     "test:auth": "node tests/auth.test.js",
     "test:crud": "node tests/crud.test.js",
-    "test": "node tests/auth.test.js && node tests/crud.test.js",
+    "test:custody": "node tests/custody.test.js",
+    "test": "node tests/auth.test.js && node tests/crud.test.js && node tests/custody.test.js",
     "reset-password": "node scripts/resetPassword.js"
   },
   "keywords": [
@@ -30,6 +31,7 @@
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.4.0",
     "oracledb": "^6.8.0"
   }
 }

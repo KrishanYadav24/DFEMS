@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { 
   getCustodyLedger, 
+  getCustodyByEvidenceId,
   transferCustody, 
   testTriggerUpdate, 
   testTriggerDelete 
 } from '../controllers/custodyController.js';
-import { validateBody } from '../middleware/validate.js';
+import { validateBody, validateNumericId } from '../middleware/validate.js';
 import { authenticateToken, requireRoles } from '../middleware/auth.js';
 
 const router = Router();
@@ -14,6 +15,7 @@ const router = Router();
 router.use(authenticateToken);
 
 router.get('/', getCustodyLedger);
+router.get('/:evidenceId', validateNumericId('evidenceId'), getCustodyByEvidenceId);
 
 // Transfer custody: Admin, Investigator, Forensic Examiner, Lab Technician, Evidence Custodian
 router.post(

@@ -10,8 +10,11 @@ import {
   Eye, 
   Edit3, 
   Clock, 
-  Hash
+  Hash,
+  Download,
+  FileUp
 } from 'lucide-react';
+
 import PageHeader from '../components/layout/PageHeader';
 import DataTable from '../components/ui/DataTable';
 import Badge from '../components/ui/Badge';
@@ -50,7 +53,9 @@ export default function EvidencePage({
   const [verifyItem, setVerifyItem] = useState(null);
   const [testHashInput, setTestHashInput] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const [fileVerifying, setFileVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState(null);
+  const [selectedUploadFile, setSelectedUploadFile] = useState(null);
 
   // Intake Form State
   const [desc, setDesc] = useState('');
@@ -120,6 +125,7 @@ export default function EvidencePage({
     setFileName('');
     setFileSize('4096');
     setMimeType('application/octet-stream');
+    setSelectedUploadFile(null);
     // Generate valid 64-char sample SHA-256
     const randomHex = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
     setHashValue(randomHex);
@@ -169,14 +175,32 @@ export default function EvidencePage({
       setFormError('An associated case must be selected.');
       return;
     }
-    if (!hashValue || hashValue.trim().length !== 64) {
-      setFormError('A valid 64-character hexadecimal SHA-256 hash is required.');
-      return;
-    }
 
     setSubmitting(true);
     setFormError('');
     try {
+      // 1. If physical file is provided, use uploadEvidence endpoint (computes SHA-256 byte hash on server)
+      if (evidenceType === 'File' && selectedUploadFile) {
+        const formData = new FormData();
+        formData.append('file', selectedUploadFile);
+        formData.append('description', desc.trim());
+        formData.append('caseId', caseId);
+
+        const result = await evidenceService.uploadEvidence(formData);
+        setSuccessMsg(`Evidence File #${result.evidenceId} ("${result.fileName}") ingested, hashed with SHA-256, and sealed in vault.`);
+        setIsRegisterOpen(false);
+        await fetchEvidence();
+        if (onAddEvidence) onAddEvidence(result);
+        return;
+      }
+
+      // 2. Otherwise use JSON intake endpoint
+      if (!hashValue || hashValue.trim().length !== 64) {
+        setFormError('A valid 64-character hexadecimal SHA-256 hash is required.');
+        setSubmitting(false);
+        return;
+      }
+
       const payload = {
         description: desc.trim(),
         caseId: parseInt(caseId, 10),
@@ -253,6 +277,43 @@ export default function EvidencePage({
       setVerifying(false);
     }
   };
+
+  // Re-verify Stored Physical File directly from vault on disk
+  const handleVerifyStoredFile = async () => {
+    if (!verifyItem) return;
+    setFileVerifying(true);
+    setVerificationResult(null);
+    try {
+      const response = await evidenceService.verifyEvidenceFile(verifyItem.id);
+      setVerificationResult({
+        status: response.status,
+        outcome: response.outcome,
+        isMatch: response.intact,
+        message: response.message,
+        recomputedHash: response.recomputedHash,
+      });
+    } catch (err) {
+      const errMsg = err.response?.data?.error?.message || err.response?.data?.message || err.message || 'Stored file verification failed.';
+      setVerificationResult({
+        status: 'ERROR',
+        outcome: 'ERROR',
+        isMatch: false,
+        message: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg),
+      });
+    } finally {
+      setFileVerifying(false);
+    }
+  };
+
+  // Download Physical Evidence File from Vault
+  const handleDownloadFile = async (item) => {
+    try {
+      await evidenceService.downloadEvidenceFile(item.id, item.fileName || `evidence_${item.id}.bin`);
+    } catch (err) {
+      console.error('File download failed:', err);
+    }
+  };
+
 
   const columns = [
     {
@@ -336,6 +397,17 @@ export default function EvidencePage({
           >
             Verify
           </Button>
+          {(row.fileName || row.type === 'File') && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Download}
+              onClick={() => handleDownloadFile(row)}
+              title="Download Stored Evidence File"
+            >
+              File
+            </Button>
+          )}
           {canEdit && (
             <Button
               size="sm"
@@ -530,14 +602,59 @@ export default function EvidencePage({
             )}
           </div>
 
-          <Input
-            label="Intake SHA-256 Checksum"
-            required
-            placeholder="64-character hexadecimal SHA-256 hash"
-            value={hashValue}
-            onChange={(e) => setHashValue(e.target.value)}
-            helperText="Cryptographic digest calculated at the point of forensic seizure (immutable)"
-          />
+          {evidenceType === 'File' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-app-text block">Physical Evidence File Upload</label>
+              <div className="border-2 border-dashed border-app-border rounded-lg p-3 text-center hover:border-app-primary transition-colors bg-gray-50/50">
+                <input
+                  type="file"
+                  id="evidence-file-input"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      setSelectedUploadFile(f);
+                      setFileName(f.name);
+                      setFileSize(String(f.size));
+                      setMimeType(f.type || 'application/octet-stream');
+                    }
+                  }}
+                />
+                <label htmlFor="evidence-file-input" className="cursor-pointer flex flex-col items-center gap-1">
+                  <FileUp className="w-5 h-5 text-app-primary" />
+                  <span className="text-xs font-semibold text-app-primary">
+                    {selectedUploadFile ? selectedUploadFile.name : 'Choose physical evidence file to upload'}
+                  </span>
+                  <span className="text-[11px] text-app-muted">
+                    {selectedUploadFile
+                      ? `${(selectedUploadFile.size / 1024).toFixed(1)} KB — SHA-256 will be calculated directly from binary bytes by server`
+                      : 'Binary file, memory dump, PCAP, disk image (up to 50MB)'}
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {selectedUploadFile ? (
+            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-900 flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold block">Byte-Level SHA-256 Checksum Calculation</span>
+                <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
+                  Upon submission, Express backend will stream raw binary bytes of <strong>{selectedUploadFile.name}</strong>, compute cryptographic SHA-256 fingerprint, seal file in isolated vault, and register intake digest into Oracle.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <Input
+              label="Intake SHA-256 Checksum"
+              required
+              placeholder="64-character hexadecimal SHA-256 hash"
+              value={hashValue}
+              onChange={(e) => setHashValue(e.target.value)}
+              helperText="Cryptographic digest calculated at the point of forensic seizure (immutable)"
+            />
+          )}
         </form>
       </Modal>
 
@@ -711,18 +828,47 @@ export default function EvidencePage({
               </p>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-app-text font-medium block">Verification Test Hash to Compare:</label>
+            {(verifyItem.fileName || verifyItem.type === 'File') && (
+              <div className="p-3.5 bg-blue-50/70 rounded-lg border border-blue-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-blue-950 flex items-center gap-1.5">
+                    <HardDrive className="w-4 h-4 text-app-primary" />
+                    Sealed Vault File: {verifyItem.fileName || 'evidence_file.bin'}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={Download}
+                    onClick={() => handleDownloadFile(verifyItem)}
+                  >
+                    Download File
+                  </Button>
+                </div>
+                <p className="text-[11px] text-blue-800 leading-relaxed">
+                  Re-reads actual binary bytes from the isolated evidence vault on disk, recomputes the SHA-256 digest in Node.js, and compares against the stored intake hash in Oracle via PL/SQL function <code className="font-mono bg-blue-100 px-1 py-0.5 rounded text-blue-900 font-semibold">fn_verify_hash</code>.
+                </p>
+                <Button
+                  size="sm"
+                  onClick={handleVerifyStoredFile}
+                  disabled={fileVerifying}
+                >
+                  {fileVerifying ? 'Recomputing Hash from Disk...' : 'Re-verify Stored File Bytes (fn_verify_hash)'}
+                </Button>
+              </div>
+            )}
+
+            <div className="space-y-1.5 pt-2 border-t border-gray-200">
+              <label className="text-app-text font-medium block">Manual Cryptographic Hash Check:</label>
               <textarea
                 rows={2}
                 value={testHashInput}
                 onChange={(e) => setTestHashInput(e.target.value)}
                 className="w-full font-mono text-xs p-2.5 rounded-lg border border-app-border focus:ring-2 focus:ring-app-primary/20 focus:border-app-primary outline-none"
-                placeholder="Paste SHA-256 hash to test integrity..."
+                placeholder="Paste external SHA-256 hash to test integrity..."
               />
               <div className="flex gap-2 pt-1">
                 <Button size="sm" onClick={handleRunVerification} disabled={verifying}>
-                  {verifying ? 'Verifying in Oracle...' : 'Execute fn_verify_hash'}
+                  {verifying ? 'Verifying in Oracle...' : 'Compare External Hash'}
                 </Button>
                 <Button 
                   size="sm" 
@@ -746,11 +892,17 @@ export default function EvidencePage({
                 ) : (
                   <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 )}
-                <div>
+                <div className="space-y-1 flex-1">
                   <span className="font-bold uppercase tracking-wider block text-[11px]">
                     Result: {verificationResult.status} ({verificationResult.outcome})
                   </span>
-                  <p className="mt-0.5 leading-relaxed">{verificationResult.message}</p>
+                  <p className="leading-relaxed">{verificationResult.message}</p>
+                  {verificationResult.recomputedHash && (
+                    <div className="mt-2 pt-2 border-t border-current/20 text-[11px] font-mono break-all">
+                      <span className="font-bold block">Recomputed SHA-256 Digest:</span>
+                      {verificationResult.recomputedHash}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

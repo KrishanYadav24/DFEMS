@@ -14,6 +14,7 @@ import UserManagementPage from './pages/UserManagementPage';
 import { authService } from './services/authService';
 import { caseService } from './services/caseService';
 import { evidenceService } from './services/evidenceService';
+import { custodyService } from './services/custodyService';
 
 import {
   INITIAL_USERS,
@@ -79,6 +80,10 @@ export default function App() {
 
       evidenceService.getEvidence().then((data) => {
         if (data && data.length > 0) setEvidence(data);
+      }).catch(() => {});
+
+      custodyService.getCustody().then((data) => {
+        if (data && data.length > 0) setCustody(data);
       }).catch(() => {});
     }
   }, [isAuthenticated]);
