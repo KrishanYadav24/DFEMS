@@ -17,12 +17,12 @@ export async function runQuery(req, res, next) {
               e.Description,
               e.Status,
               c.Title AS Case_Title,
-              u.First_Name || ' ' || u.Last_Name AS Investigator_Name,
+              NVL(u.First_Name || ' ' || u.Last_Name, 'Unassigned') AS Investigator_Name,
               i.Badge_Number
             FROM EVIDENCE e
             JOIN CASE_TABLE c ON e.Case_ID = c.Case_ID
-            JOIN INVESTIGATOR i ON c.Assigned_To = i.User_ID
-            JOIN APP_USER u ON i.User_ID = u.User_ID
+            LEFT JOIN INVESTIGATOR i ON c.Assigned_To = i.User_ID
+            LEFT JOIN APP_USER u ON i.User_ID = u.User_ID
             ORDER BY e.Evidence_ID
           `,
         },
@@ -30,16 +30,17 @@ export async function runQuery(req, res, next) {
           title: 'Query A2: Custody Trail with Evidence & Case Info',
           sql: `
             SELECT
-              coc.Log_ID,
+              coc.Custody_ID,
               TO_CHAR(coc.Timestamp_At, 'YYYY-MM-DD HH24:MI:SS') AS Timestamp_At,
               coc.Action,
-              coc.Actor,
+              NVL(u.First_Name || ' ' || u.Last_Name, 'System Custodian') AS Logged_By,
               e.Description AS Evidence_Description,
               c.Title AS Case_Title
             FROM CHAIN_OF_CUSTODY coc
             JOIN EVIDENCE e ON coc.Evidence_ID = e.Evidence_ID
             JOIN CASE_TABLE c ON e.Case_ID = c.Case_ID
-            ORDER BY coc.Log_ID
+            LEFT JOIN APP_USER u ON coc.User_ID = u.User_ID
+            ORDER BY coc.Custody_ID
           `,
         },
         A3: {
@@ -48,7 +49,7 @@ export async function runQuery(req, res, next) {
             SELECT
               fa.Analysis_ID,
               e.Description AS Evidence_Description,
-              u.First_Name || ' ' || u.Last_Name AS Examiner_Name,
+              NVL(u.First_Name || ' ' || u.Last_Name, 'Forensic Examiner') AS Examiner_Name,
               fan.Certification,
               lab.Lab_Name,
               fa.Findings
@@ -80,7 +81,7 @@ export async function runQuery(req, res, next) {
       // Nested Queries (B1 - B4)
       nested: {
         B1: {
-          title: 'Query B1: Cases with More Than 2 Evidence Items (EXISTS Subquery)',
+          title: 'Query B1: Cases with Registered Evidence (EXISTS Subquery)',
           sql: `
             SELECT
               c.Case_ID,
@@ -91,14 +92,14 @@ export async function runQuery(req, res, next) {
               SELECT 1
               FROM EVIDENCE e
               WHERE e.Case_ID = c.Case_ID
-              HAVING COUNT(*) > 2
+              HAVING COUNT(*) >= 1
               GROUP BY e.Case_ID
             )
             ORDER BY c.Case_ID
           `,
         },
         B2: {
-          title: 'Query B2: Evidence in Cases Assigned to Ravi Kumar (IN Subquery)',
+          title: 'Query B2: Evidence in Open or Active Cases (IN Subquery)',
           sql: `
             SELECT
               e.Evidence_ID,
@@ -109,17 +110,13 @@ export async function runQuery(req, res, next) {
             WHERE e.Case_ID IN (
               SELECT c.Case_ID
               FROM CASE_TABLE c
-              WHERE c.Assigned_To = (
-                SELECT u.User_ID
-                FROM APP_USER u
-                WHERE u.Username = 'ravi.kumar'
-              )
+              WHERE c.Status IN ('Open', 'Under Investigation')
             )
             ORDER BY e.Evidence_ID
           `,
         },
         B3: {
-          title: 'Query B3: Cases with Evidence Count Above Average (Scalar Subquery)',
+          title: 'Query B3: Cases with Evidence Count At or Above Average (Scalar Subquery)',
           sql: `
             SELECT
               c.Case_ID,
@@ -128,8 +125,8 @@ export async function runQuery(req, res, next) {
             FROM CASE_TABLE c
             JOIN EVIDENCE e ON c.Case_ID = e.Case_ID
             GROUP BY c.Case_ID, c.Title
-            HAVING COUNT(e.Evidence_ID) > (
-              SELECT AVG(ev_count)
+            HAVING COUNT(e.Evidence_ID) >= (
+              SELECT NVL(AVG(ev_count), 0)
               FROM (
                 SELECT COUNT(*) AS ev_count
                 FROM EVIDENCE
@@ -140,20 +137,18 @@ export async function runQuery(req, res, next) {
           `,
         },
         B4: {
-          title: 'Query B4: Investigators with Zero Assigned Cases (NOT IN Subquery)',
+          title: 'Query B4: Evidence with No Forensic Analysis (NOT IN Subquery)',
           sql: `
             SELECT
-              u.User_ID,
-              u.First_Name || ' ' || u.Last_Name AS Investigator_Name,
-              inv.Badge_Number
-            FROM INVESTIGATOR inv
-            JOIN APP_USER u ON inv.User_ID = u.User_ID
-            WHERE inv.User_ID NOT IN (
-              SELECT DISTINCT Assigned_To
-              FROM CASE_TABLE
-              WHERE Assigned_To IS NOT NULL
+              e.Evidence_ID,
+              e.Description,
+              e.Status
+            FROM EVIDENCE e
+            WHERE e.Evidence_ID NOT IN (
+              SELECT NVL(Evidence_ID, -1)
+              FROM FORENSIC_ANALYSIS
             )
-            ORDER BY u.User_ID
+            ORDER BY e.Evidence_ID
           `,
         },
       },
@@ -161,7 +156,7 @@ export async function runQuery(req, res, next) {
       // Aggregates & Grouping (C1 - C4)
       aggregates: {
         C1: {
-          title: 'Query C1: Evidence Count per Case (GROUP BY & HAVING >= 2)',
+          title: 'Query C1: Evidence Count per Case (GROUP BY & COUNT)',
           sql: `
             SELECT
               c.Case_ID,
@@ -170,7 +165,6 @@ export async function runQuery(req, res, next) {
             FROM CASE_TABLE c
             JOIN EVIDENCE e ON c.Case_ID = e.Case_ID
             GROUP BY c.Case_ID, c.Title
-            HAVING COUNT(e.Evidence_ID) >= 2
             ORDER BY Total_Evidence DESC
           `,
         },
@@ -192,9 +186,9 @@ export async function runQuery(req, res, next) {
             SELECT
               e.Evidence_ID,
               e.Description,
-              COUNT(coc.Log_ID) AS Custody_Transfers,
-              MIN(TO_CHAR(coc.Timestamp_At, 'YYYY-MM-DD')) AS First_Logged,
-              MAX(TO_CHAR(coc.Timestamp_At, 'YYYY-MM-DD')) AS Last_Logged
+              COUNT(coc.Custody_ID) AS Custody_Transfers,
+              MIN(TO_CHAR(coc.Timestamp_At, 'YYYY-MM-DD HH24:MI:SS')) AS First_Logged,
+              MAX(TO_CHAR(coc.Timestamp_At, 'YYYY-MM-DD HH24:MI:SS')) AS Last_Logged
             FROM EVIDENCE e
             JOIN CHAIN_OF_CUSTODY coc ON e.Evidence_ID = coc.Evidence_ID
             GROUP BY e.Evidence_ID, e.Description
@@ -202,19 +196,16 @@ export async function runQuery(req, res, next) {
           `,
         },
         C4: {
-          title: 'Query C4: Forensic Analysis Volume per Certified Examiner',
+          title: 'Query C4: Case and Evidence Volume by Case Status',
           sql: `
             SELECT
-              u.First_Name || ' ' || u.Last_Name AS Examiner_Name,
-              fan.Certification,
-              lab.Lab_Name,
-              COUNT(fa.Analysis_ID) AS Analyses_Completed
-            FROM FORENSIC_ANALYST fan
-            JOIN APP_USER u ON fan.User_ID = u.User_ID
-            JOIN LABORATORY lab ON fan.Laboratory_ID = lab.Laboratory_ID
-            LEFT JOIN FORENSIC_ANALYSIS fa ON fan.User_ID = fa.Analyst_ID
-            GROUP BY u.First_Name, u.Last_Name, fan.Certification, lab.Lab_Name
-            ORDER BY Analyses_Completed DESC
+              c.Status AS Case_Status,
+              COUNT(*) AS Total_Cases,
+              COUNT(e.Evidence_ID) AS Total_Evidence
+            FROM CASE_TABLE c
+            LEFT JOIN EVIDENCE e ON c.Case_ID = e.Case_ID
+            GROUP BY c.Status
+            ORDER BY Total_Cases DESC
           `,
         },
       },
@@ -250,9 +241,9 @@ export async function getView(req, res, next) {
     const { viewName } = req.params;
 
     const allowedViews = {
-      v_case_evidence_summary: 'SELECT * FROM v_case_evidence_summary',
-      v_active_chain_of_custody: 'SELECT * FROM v_active_chain_of_custody',
-      v_forensic_workload: 'SELECT * FROM v_forensic_workload',
+      v_custody_trail: 'SELECT * FROM v_custody_trail',
+      v_case_summary: 'SELECT * FROM v_case_summary',
+      v_evidence_full: 'SELECT * FROM v_evidence_full',
     };
 
     const sql = allowedViews[viewName.toLowerCase()];

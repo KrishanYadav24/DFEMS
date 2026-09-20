@@ -49,15 +49,15 @@ SELECT
     c.Title,
     c.Status,
     loc.Address AS Location,
-    (u.First_Name || ' ' || u.Last_Name) AS Assigned_Investigator,
+    NVL(u.First_Name || ' ' || u.Last_Name, 'Unassigned') AS Assigned_Investigator,
     (
         SELECT COUNT(*)
         FROM EVIDENCE e
         WHERE e.Case_ID = c.Case_ID
     ) AS Evidence_Count
 FROM CASE_TABLE c
-JOIN LOCATION loc ON c.Location_ID = loc.Location_ID
-JOIN APP_USER u ON c.Assigned_To = u.User_ID;
+LEFT JOIN LOCATION loc ON c.Location_ID = loc.Location_ID
+LEFT JOIN APP_USER u ON c.Assigned_To = u.User_ID;
 /
 
 -- ----------------------------------------------------------------------------
@@ -395,3 +395,6 @@ BEGIN
     RAISE_APPLICATION_ERROR(-20002, 'Chain_of_Custody is append-only: existing entries cannot be deleted.');
 END;
 /
+
+EXIT;
+

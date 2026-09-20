@@ -1,0 +1,1321 @@
+============================================================================
+DFEMS — ORACLE SQL AND PL/SQL DEMONSTRATIONS (PHASE 7 / DA2)
+Current Database User:
+
+CURRENT_USER
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+PLUGGABLE_DATABASE
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+EXECUTION_TIMESTAMP
+-------------------
+DFEMS_USER
+FREEPDB1
+2026-10-11 21:55:53
+
+
+1 row selected.
+
+============================================================================
+
+---------------------------------------------------------------------------+
+[1.1] CATALOG VERIFICATION: All 13 DFEMS Application Tables
+---------------------------------------------------------------------------+
+
+TABLE_NAME															   NUM_ROWS STATUS
+-------------------------------------------------------------------------------------------------------------------------------- ---------- --------
+APP_USER																  1 VALID
+ASSIGNED																    VALID
+AUDIT_LOG																 37 VALID
+CASE_TABLE																  5 VALID
+CHAIN_OF_CUSTODY															  8 VALID
+DEVICE																	  4 VALID
+EVIDENCE																  4 VALID
+FILE_RECORD																    VALID
+FORENSIC_ANALYSIS															    VALID
+FORENSIC_ANALYST															    VALID
+INVESTIGATOR																    VALID
+LABORATORY																    VALID
+LOCATION																  1 VALID
+
+13 rows selected.
+
+
+---------------------------------------------------------------------------+
+[1.2] CONSTRAINT INSPECTION: Primary Keys (P) & Unique Constraints (U)
+---------------------------------------------------------------------------+
+
+TABLE_NAME
+--------------------------------------------------------------------------------------------------------------------------------
+CONSTRAINT_NAME 														 C
+-------------------------------------------------------------------------------------------------------------------------------- -
+COLUMN_NAME
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATUS
+--------
+APP_USER
+PK_APP_USER															 P
+USER_ID
+ENABLED
+
+APP_USER
+UQ_APP_USER_PHONE														 U
+PHONE_NUMBER
+ENABLED
+
+APP_USER
+UQ_APP_USER_USERNAME														 U
+USERNAME
+ENABLED
+
+ASSIGNED
+PK_ASSIGNED															 P
+USER_ID
+ENABLED
+
+ASSIGNED
+PK_ASSIGNED															 P
+CASE_ID
+ENABLED
+
+AUDIT_LOG
+PK_AUDIT_LOG															 P
+LOG_ID
+ENABLED
+
+CASE_TABLE
+PK_CASE_TABLE															 P
+CASE_ID
+ENABLED
+
+CHAIN_OF_CUSTODY
+PK_CHAIN_OF_CUSTODY														 P
+CUSTODY_ID
+ENABLED
+
+DEVICE
+PK_DEVICE															 P
+DEVICE_ID
+ENABLED
+
+DEVICE
+UQ_DEVICE_EVIDENCE														 U
+EVIDENCE_ID
+ENABLED
+
+DEVICE
+UQ_DEVICE_SERIAL														 U
+SERIAL_NUMBER
+ENABLED
+
+EVIDENCE
+PK_EVIDENCE															 P
+EVIDENCE_ID
+ENABLED
+
+FILE_RECORD
+PK_FILE_RECORD															 P
+FILE_ID
+ENABLED
+
+FILE_RECORD
+UQ_FILE_EVIDENCE														 U
+EVIDENCE_ID
+ENABLED
+
+FORENSIC_ANALYSIS
+PK_FORENSIC_ANALYSIS														 P
+ANALYSIS_ID
+ENABLED
+
+FORENSIC_ANALYST
+PK_FORENSIC_ANALYST														 P
+USER_ID
+ENABLED
+
+INVESTIGATOR
+PK_INVESTIGATOR 														 P
+USER_ID
+ENABLED
+
+INVESTIGATOR
+UQ_INVESTIGATOR_BADGE														 U
+BADGE_NUMBER
+ENABLED
+
+LABORATORY
+
+TABLE_NAME
+--------------------------------------------------------------------------------------------------------------------------------
+CONSTRAINT_NAME 														 C
+-------------------------------------------------------------------------------------------------------------------------------- -
+COLUMN_NAME
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATUS
+--------
+PK_LABORATORY															 P
+LABORATORY_ID
+ENABLED
+
+LABORATORY
+UQ_LABORATORY_NAME														 U
+LAB_NAME
+ENABLED
+
+LOCATION
+PK_LOCATION															 P
+LOCATION_ID
+ENABLED
+
+
+21 rows selected.
+
+
+---------------------------------------------------------------------------+
+[1.3] CONSTRAINT INSPECTION: Foreign Keys (R) with Delete Rules
+---------------------------------------------------------------------------+
+
+CHILD_TABLE
+--------------------------------------------------------------------------------------------------------------------------------
+FK_NAME
+--------------------------------------------------------------------------------------------------------------------------------
+FK_COLUMN
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+PARENT_TABLE															 DELETE_RU STATUS
+-------------------------------------------------------------------------------------------------------------------------------- --------- --------
+ASSIGNED
+FK_ASSIGNED_CASE
+CASE_ID
+CASE_TABLE															 CASCADE   ENABLED
+
+ASSIGNED
+FK_ASSIGNED_INVESTIGATOR
+USER_ID
+INVESTIGATOR															 CASCADE   ENABLED
+
+AUDIT_LOG
+FK_AUDIT_USER
+USER_ID
+APP_USER															 SET NULL  ENABLED
+
+CASE_TABLE
+FK_CASE_CREATOR
+CREATED_BY
+APP_USER															 NO ACTION ENABLED
+
+CASE_TABLE
+FK_CASE_INVESTIGATOR
+ASSIGNED_TO
+INVESTIGATOR															 NO ACTION ENABLED
+
+CASE_TABLE
+FK_CASE_LOCATION
+LOCATION_ID
+LOCATION															 NO ACTION ENABLED
+
+CHAIN_OF_CUSTODY
+FK_CUSTODY_EVIDENCE
+EVIDENCE_ID
+EVIDENCE															 CASCADE   ENABLED
+
+CHAIN_OF_CUSTODY
+FK_CUSTODY_USER
+USER_ID
+APP_USER															 SET NULL  ENABLED
+
+DEVICE
+FK_DEVICE_EVIDENCE
+EVIDENCE_ID
+EVIDENCE															 CASCADE   ENABLED
+
+EVIDENCE
+FK_EVIDENCE_CASE
+CASE_ID
+CASE_TABLE															 CASCADE   ENABLED
+
+FILE_RECORD
+FK_FILE_EVIDENCE
+EVIDENCE_ID
+EVIDENCE															 CASCADE   ENABLED
+
+FORENSIC_ANALYSIS
+FK_ANALYSIS_ANALYST
+ANALYST_ID
+FORENSIC_ANALYST														 NO ACTION ENABLED
+
+FORENSIC_ANALYSIS
+FK_ANALYSIS_EVIDENCE
+EVIDENCE_ID
+EVIDENCE															 CASCADE   ENABLED
+
+FORENSIC_ANALYST
+FK_ANALYST_LAB
+LABORATORY_ID
+LABORATORY															 NO ACTION ENABLED
+
+FORENSIC_ANALYST
+FK_ANALYST_USER
+USER_ID
+APP_USER															 CASCADE   ENABLED
+
+INVESTIGATOR
+FK_INVESTIGATOR_USER
+USER_ID
+APP_USER															 CASCADE   ENABLED
+
+
+16 rows selected.
+
+
+---------------------------------------------------------------------------+
+[1.4] CONSTRAINT INSPECTION: Check Constraints (C)
+---------------------------------------------------------------------------+
+
+TABLE_NAME
+--------------------------------------------------------------------------------------------------------------------------------
+CONSTRAINT_NAME
+--------------------------------------------------------------------------------------------------------------------------------
+CONDITION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATUS
+--------
+APP_USER
+CHK_USER_ROLE
+Role IN (
+	'Admin',
+	'Investigator',
+	'Forensic Examiner',
+	'Evidence Custodian',
+	'Legal Reviewer',
+	'Auditor'
+    )
+ENABLED
+
+APP_USER
+CHK_USER_STATUS
+Account_Status IN ('Active', 'Suspended', 'Inactive')
+ENABLED
+
+CASE_TABLE
+CHK_CASE_STATUS
+Status IN (
+	'Open',
+	'Under Investigation',
+	'Closed',
+	'Archived'
+    )
+ENABLED
+
+EVIDENCE
+CHK_EVIDENCE_STATUS
+Status IN (
+	'Collected',
+	'In Storage',
+	'Under Analysis',
+	'Presented in Court',
+	'Archived',
+	'Disposed'
+    )
+ENABLED
+
+
+4 rows selected.
+
+
+---------------------------------------------------------------------------+
+[1.5] SAFE DDL DEMONSTRATION: Dedicated Temporary Demonstration Table
+---------------------------------------------------------------------------+
+>>> SUCCESS: DEMO_EVIDENCE_VAULT created with PK, FK, UNIQUE, and CHECK constraints.
+
+PL/SQL procedure successfully completed.
+
+
+TABLE_NAME
+--------------------------------------------------------------------------------------------------------------------------------
+CONSTRAINT_NAME 														 C STATUS
+-------------------------------------------------------------------------------------------------------------------------------- - --------
+DEMO_EVIDENCE_VAULT
+SYS_C008676															 C ENABLED
+
+DEMO_EVIDENCE_VAULT
+CHK_DEMO_SECURITY_TIER														 C ENABLED
+
+DEMO_EVIDENCE_VAULT
+SYS_C008677															 C ENABLED
+
+DEMO_EVIDENCE_VAULT
+SYS_C008673															 C ENABLED
+
+DEMO_EVIDENCE_VAULT
+SYS_C008674															 C ENABLED
+
+DEMO_EVIDENCE_VAULT
+SYS_C008675															 C ENABLED
+
+DEMO_EVIDENCE_VAULT
+SYS_C008679															 P ENABLED
+
+DEMO_EVIDENCE_VAULT
+FK_DEMO_CASE_REF														 R ENABLED
+
+DEMO_EVIDENCE_VAULT
+UQ_DEMO_VAULT_CODE														 U ENABLED
+
+
+9 rows selected.
+
+
+Table dropped.
+
+>>> SUCCESS: DEMO_EVIDENCE_VAULT dropped cleanly without residual schema impact.
+
+1 row deleted.
+
+
+1 row deleted.
+
+
+1 row deleted.
+
+
+Commit complete.
+
+
+---------------------------------------------------------------------------+
+[2.1] CREATE (INSERT): Insert dedicated demonstration records
+---------------------------------------------------------------------------+
+
+1 row created.
+
+
+1 row created.
+
+
+1 row created.
+
+
+Commit complete.
+
+>>> SUCCESS: Dedicated test records created in LOCATION, APP_USER, and CASE_TABLE.
+
+---------------------------------------------------------------------------+
+[2.2] READ (SELECT): Inspect newly inserted demonstration records
+---------------------------------------------------------------------------+
+
+   CASE_ID CASE_TITLE												CASE_STATUS
+---------- ---------------------------------------------------------------------------------------------------- --------------------
+CRIME_TYPE											     CREATOR_USERNAME
+---------------------------------------------------------------------------------------------------- --------------------------------------------------
+INCIDENT_LOCATION
+------------------------------------------------------------------------------------------------------------------------------------------------------
+	43 DEMO_SAFE_CRUD_CASE_2026										Open
+Network Intrusion										     demo.crud.officer
+999 DEMO_CRUD_LOCATION_WAY, CYBER CITY
+
+
+1 row selected.
+
+
+---------------------------------------------------------------------------+
+[2.3] UPDATE: Modify demonstration case, user and location attributes
+---------------------------------------------------------------------------+
+
+1 row updated.
+
+
+1 row updated.
+
+
+1 row updated.
+
+
+Commit complete.
+
+
+---------------------------------------------------------------------------+
+[2.4] READ AFTER UPDATE: Verify state transitions
+---------------------------------------------------------------------------+
+
+   CASE_ID TITLE												UPDATED_STATUS
+---------- ---------------------------------------------------------------------------------------------------- --------------------
+UPDATED_CRIME_TYPE										     UPDATED_USER_NAME
+---------------------------------------------------------------------------------------------------- -----------------------------------------------------------------------------------------------------
+UPDATED_LOCATION
+------------------------------------------------------------------------------------------------------------------------------------------------------
+	43 DEMO_SAFE_CRUD_CASE_2026										Under Investigation
+Advanced Persistent Threat									     Demo Lead_Investigator
+999 DEMO_CRUD_LOCATION_WAY (SECURE FACILITY)
+
+
+1 row selected.
+
+
+---------------------------------------------------------------------------+
+[2.5] DELETE: Safe teardown of dedicated demonstration records
+---------------------------------------------------------------------------+
+
+1 row deleted.
+
+
+1 row deleted.
+
+
+1 row deleted.
+
+
+Commit complete.
+
+
+---------------------------------------------------------------------------+
+[2.6] VERIFY DELETION: Confirm complete cleanup (Zero rows expected)
+---------------------------------------------------------------------------+
+
+RESIDUAL_CASES RESIDUAL_USERS RESIDUAL_LOCATIONS
+-------------- -------------- ------------------
+	     0		    0		       0
+
+1 row selected.
+
+
+---------------------------------------------------------------------------+
+[2.6] VERIFY DELETION: Confirm complete cleanup (Zero rows expected)
+---------------------------------------------------------------------------+
+
+RESIDUAL_DEMO_RECORDS
+---------------------
+		    0
+
+1 row selected.
+
+
+---------------------------------------------------------------------------+
+[3.1] MULTI-TABLE JOIN (A1): Evidence with Case Details & Lead Investigator
+---------------------------------------------------------------------------+
+
+EVIDENCE_ID
+-----------
+DESCRIPTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATUS			       CASE_TITLE
+------------------------------ ----------------------------------------------------------------------------------------------------
+INVESTIGATOR_NAME										      CRIME_TYPE
+----------------------------------------------------------------------------------------------------- ----------------------------------------------------------------------------------------------------
+	  1
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+												      Advanced Persistent Threat (APT)
+
+	 36
+DEMO_TEST_FORENSIC_MEMORY_DUMP
+Collected		       AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+												      Advanced Persistent Threat (APT)
+
+	 37
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+In Storage		       AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+												      Advanced Persistent Threat (APT)
+
+	 44
+DEMO_TEST_FORENSIC_MEMORY_DUMP
+Collected		       AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+												      Advanced Persistent Threat (APT)
+
+	 45
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+In Storage		       AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+												      Advanced Persistent Threat (APT)
+
+	 51
+DEMO_TEST_FORENSIC_MEMORY_DUMP
+Collected		       AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+												      Advanced Persistent Threat (APT)
+
+	 52
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+In Storage		       AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+												      Advanced Persistent Threat (APT)
+
+	  3
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       AUTOTEST_CYBER_ESPIONAGE_1791649743978_UPDATED
+												      Advanced Persistent Threat (APT)
+
+	  4
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       AUTOTEST_CYBER_ESPIONAGE_1791649909381_UPDATED
+												      Advanced Persistent Threat (APT)
+
+	  5
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       AUTOTEST_CYBER_ESPIONAGE_1791652907134_UPDATED
+												      Advanced Persistent Threat (APT)
+
+
+10 rows selected.
+
+
+---------------------------------------------------------------------------+
+[3.2] MULTI-TABLE JOIN (A2): Full Chronological Custody Trail
+---------------------------------------------------------------------------+
+
+CUSTODY_ID TIMESTAMP_AT
+---------- -------------------
+ACTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+LOGGED_BY											      EVIDENCE_ID
+----------------------------------------------------------------------------------------------------- -----------
+EVIDENCE_DESCRIPTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+CASE_TITLE
+----------------------------------------------------------------------------------------------------
+	47 2026-10-11 21:54:38
+Transfer reason: Moved to Central Evidence Vault B-12
+													       52
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+
+	46 2026-10-11 21:54:38
+Status changed: Collected -> In Storage
+													       52
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+
+	45 2026-10-11 21:54:38
+Collected at scene
+													       51
+DEMO_TEST_FORENSIC_MEMORY_DUMP
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+
+	41 2026-10-11 21:52:41
+Transfer reason: Moved to Central Evidence Vault B-12
+													       45
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+
+	40 2026-10-11 21:52:41
+Status changed: Collected -> In Storage
+													       45
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+
+	39 2026-10-11 21:52:41
+Collected at scene
+													       44
+DEMO_TEST_FORENSIC_MEMORY_DUMP
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+
+	35 2026-10-11 21:51:33
+Transfer reason: Moved to Central Evidence Vault B-12
+													       37
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+
+	34 2026-10-11 21:51:33
+Status changed: Collected -> In Storage
+													       37
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+
+	33 2026-10-11 21:51:33
+Collected at scene
+													       36
+DEMO_TEST_FORENSIC_MEMORY_DUMP
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED
+
+	32 2026-10-11 21:51:32
+Status changed: Collected -> Under Analysis
+													       35
+DEMO_SEIZED_ROUTER_FIRMWARE (IMAGE EXTRACTED)
+AUTOTEST_HISTORICAL_CASE_034
+
+
+10 rows selected.
+
+
+---------------------------------------------------------------------------+
+[3.3] POLYMORPHIC EVIDENCE JOIN (A3): Hardware Devices & File Records
+---------------------------------------------------------------------------+
+
+EVIDENCE_ID
+-----------
+DESCRIPTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATUS			       EVIDENCE_CLASSIF SERIAL_NUMBER
+------------------------------ ---------------- --------------------------------------------------
+FILE_NAME
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ FILE_SIZE
+----------
+	  1
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       Physical Device	SAMSUNG-NVME-990-PRO-001
+
+
+
+	  3
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       Physical Device	SAMSUNG-NVME-1791649743978
+
+
+
+	  4
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       Physical Device	SAMSUNG-NVME-1791649909381
+
+
+
+	  5
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       Physical Device	SAMSUNG-NVME-1791652907134
+
+
+
+	 21
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       Physical Device	SAMSUNG-NVME-1791727403066
+
+
+
+	 22
+Seized Encrypted Container - Memory Extraction Dump
+Collected		       Digital File
+memdump.raw
+	73
+
+	 23
+Seized Encrypted Container - Memory Extraction Dump
+Under Analysis		       Digital File
+memdump.raw
+	73
+
+	 24
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       Physical Device	SAMSUNG-NVME-1791728053411
+
+
+
+	 25
+Seized Encrypted Container - Memory Extraction Dump
+Under Analysis		       Digital File
+memdump.raw
+	73
+
+	 35
+DEMO_SEIZED_ROUTER_FIRMWARE (IMAGE EXTRACTED)
+Under Analysis		       Generic Evidence
+
+
+
+
+10 rows selected.
+
+
+---------------------------------------------------------------------------+
+[3.4] CORRELATED SUBQUERY (B1): Cases with at least one registered evidence
+---------------------------------------------------------------------------+
+
+   CASE_ID TITLE												STATUS		     LINKED_EVIDENCE_COUNT
+---------- ---------------------------------------------------------------------------------------------------- -------------------- ---------------------
+	 2 AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED								Under Investigation			 7
+	 6 AUTOTEST_CYBER_ESPIONAGE_1791649743978_UPDATED							Under Investigation			 1
+	 8 AUTOTEST_CYBER_ESPIONAGE_1791649909381_UPDATED							Under Investigation			 1
+	10 AUTOTEST_CYBER_ESPIONAGE_1791652907134_UPDATED							Under Investigation			 1
+	21 AUTOTEST_CYBER_ESPIONAGE_1791727403066_UPDATED							Under Investigation			 1
+	23 PHASE6_CUSTODY_TEST_CASE_1791727919291								Open					 1
+	24 PHASE6_CUSTODY_TEST_CASE_1791728040831								Open					 1
+	25 AUTOTEST_CYBER_ESPIONAGE_1791728053411_UPDATED							Under Investigation			 1
+	27 PHASE6_CUSTODY_TEST_CASE_1791728054139								Open					 1
+	34 AUTOTEST_HISTORICAL_CASE_034 									Under Investigation			 1
+
+10 rows selected.
+
+
+---------------------------------------------------------------------------+
+[3.5] IN SUBQUERY (B2): Evidence in Open or Active Cases
+---------------------------------------------------------------------------+
+
+EVIDENCE_ID
+-----------
+DESCRIPTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATUS				  CASE_ID
+------------------------------ ----------
+	  1
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage				2
+
+	  3
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage				6
+
+	  4
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage				8
+
+	  5
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage			       10
+
+	 21
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage			       21
+
+	 22
+Seized Encrypted Container - Memory Extraction Dump
+Collected			       23
+
+	 23
+Seized Encrypted Container - Memory Extraction Dump
+Under Analysis			       24
+
+	 24
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage			       25
+
+	 25
+Seized Encrypted Container - Memory Extraction Dump
+Under Analysis			       27
+
+	 35
+DEMO_SEIZED_ROUTER_FIRMWARE (IMAGE EXTRACTED)
+Under Analysis			       34
+
+
+10 rows selected.
+
+
+---------------------------------------------------------------------------+
+[3.6] SCALAR SUBQUERY & HAVING (B3): Cases with Evidence Count >= Average
+---------------------------------------------------------------------------+
+
+   CASE_ID TITLE												EVIDENCE_COUNT
+---------- ---------------------------------------------------------------------------------------------------- --------------
+	 2 AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED									     7
+
+1 row selected.
+
+
+---------------------------------------------------------------------------+
+[3.7] NOT IN / NOT EXISTS SUBQUERY (B4): Unanalyzed Evidence Items
+---------------------------------------------------------------------------+
+
+EVIDENCE_ID
+-----------
+DESCRIPTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATUS
+------------------------------
+	  1
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage
+
+	  3
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage
+
+	  4
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage
+
+	  5
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage
+
+	 21
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage
+
+	 22
+Seized Encrypted Container - Memory Extraction Dump
+Collected
+
+	 23
+Seized Encrypted Container - Memory Extraction Dump
+Under Analysis
+
+	 24
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage
+
+	 25
+Seized Encrypted Container - Memory Extraction Dump
+Under Analysis
+
+	 35
+DEMO_SEIZED_ROUTER_FIRMWARE (IMAGE EXTRACTED)
+Under Analysis
+
+
+10 rows selected.
+
+
+---------------------------------------------------------------------------+
+[3.8] AGGREGATE FUNCTIONS & GROUP BY (C1): Case Evidence Aggregates
+---------------------------------------------------------------------------+
+
+   CASE_ID TITLE												TOTAL_EVIDENCE EARLIEST_ LATEST_CO
+---------- ---------------------------------------------------------------------------------------------------- -------------- --------- ---------
+	 2 AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED									     7 10-OCT-26 11-OCT-26
+	34 AUTOTEST_HISTORICAL_CASE_034 										     1 11-OCT-26 11-OCT-26
+	 6 AUTOTEST_CYBER_ESPIONAGE_1791649743978_UPDATED								     1 10-OCT-26 10-OCT-26
+	23 PHASE6_CUSTODY_TEST_CASE_1791727919291									     1 11-OCT-26 11-OCT-26
+	24 PHASE6_CUSTODY_TEST_CASE_1791728040831									     1 11-OCT-26 11-OCT-26
+	25 AUTOTEST_CYBER_ESPIONAGE_1791728053411_UPDATED								     1 11-OCT-26 11-OCT-26
+	27 PHASE6_CUSTODY_TEST_CASE_1791728054139									     1 11-OCT-26 11-OCT-26
+	 8 AUTOTEST_CYBER_ESPIONAGE_1791649909381_UPDATED								     1 10-OCT-26 10-OCT-26
+	10 AUTOTEST_CYBER_ESPIONAGE_1791652907134_UPDATED								     1 10-OCT-26 10-OCT-26
+	21 AUTOTEST_CYBER_ESPIONAGE_1791727403066_UPDATED								     1 11-OCT-26 11-OCT-26
+
+10 rows selected.
+
+
+---------------------------------------------------------------------------+
+[3.9] AGGREGATE WITH STATISTICAL PERCENTAGE (C2): Status Share
+---------------------------------------------------------------------------+
+
+STATUS			       ITEM_COUNT PERCENTAGE_SHARE
+------------------------------ ---------- ----------------
+In Storage				9	     56.25
+Collected				4		25
+Under Analysis				3	     18.75
+
+3 rows selected.
+
+
+---------------------------------------------------------------------------+
+[3.10] CONDITIONAL SUM AGGREGATION (C3): Case Status Breakdown
+---------------------------------------------------------------------------+
+
+TOTAL_CASES OPEN_CASES UNDER_INVESTIGATION_CASES CLOSED_CASES ARCHIVED_CASES
+----------- ---------- ------------------------- ------------ --------------
+	 11	     4			       7	    0		   0
+
+1 row selected.
+
+
+---------------------------------------------------------------------------+
+[3.11] SORTING & ORACLE 12c+ PAGINATION (OFFSET / FETCH NEXT)
+---------------------------------------------------------------------------+
+
+   CASE_ID TITLE												STATUS		     DATE_OPEN
+---------- ---------------------------------------------------------------------------------------------------- -------------------- ---------
+	34 AUTOTEST_HISTORICAL_CASE_034 									Under Investigation  11-OCT-26
+	27 PHASE6_CUSTODY_TEST_CASE_1791728054139								Open		     11-OCT-26
+	25 AUTOTEST_CYBER_ESPIONAGE_1791728053411_UPDATED							Under Investigation  11-OCT-26
+	24 PHASE6_CUSTODY_TEST_CASE_1791728040831								Open		     11-OCT-26
+	23 PHASE6_CUSTODY_TEST_CASE_1791727919291								Open		     11-OCT-26
+
+5 rows selected.
+
+
+---------------------------------------------------------------------------+
+[4.1] VIEWS INSPECTION: Catalog Definitions in USER_VIEWS
+---------------------------------------------------------------------------+
+
+VIEW_NAME															 TEXT_LENGTH R
+-------------------------------------------------------------------------------------------------------------------------------- ----------- -
+V_CASE_SUMMARY																 374 N
+V_CUSTODY_TRAIL 															 267 N
+V_EVIDENCE_FULL 															 468 N
+
+3 rows selected.
+
+
+---------------------------------------------------------------------------+
+[4.2] VIEW DEMONSTRATION: v_custody_trail
+---------------------------------------------------------------------------+
+
+EVIDENCE_ID
+-----------
+EVIDENCE_DESCRIPTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+CASE_TITLE											     CUSTODY_ID TIMESTAMP_AT
+---------------------------------------------------------------------------------------------------- ---------- ---------------------------------------------------------------------------
+ACTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	 52
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED								     47 11-OCT-26 09.54.38.706445 PM
+Transfer reason: Moved to Central Evidence Vault B-12
+
+	 52
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED								     46 11-OCT-26 09.54.38.705412 PM
+Status changed: Collected -> In Storage
+
+	 51
+DEMO_TEST_FORENSIC_MEMORY_DUMP
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED								     45 11-OCT-26 09.54.38.681576 PM
+Collected at scene
+
+	 45
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED								     41 11-OCT-26 09.52.41.771757 PM
+Transfer reason: Moved to Central Evidence Vault B-12
+
+	 45
+DEMO_TEMP_TRANSFER_TEST_DRIVE
+AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED								     40 11-OCT-26 09.52.41.771757 PM
+Status changed: Collected -> In Storage
+
+
+5 rows selected.
+
+
+---------------------------------------------------------------------------+
+[4.3] VIEW DEMONSTRATION: v_case_summary
+---------------------------------------------------------------------------+
+
+no rows selected
+
+
+---------------------------------------------------------------------------+
+[4.4] VIEW DEMONSTRATION: v_evidence_full
+---------------------------------------------------------------------------+
+
+EVIDENCE_ID
+-----------
+DESCRIPTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATUS			       COLLECTIO HASH_VALUE							  CASE_TITLE											       EVIDEN
+------------------------------ --------- ---------------------------------------------------------------- ---------------------------------------------------------------------------------------------------- ------
+SERIAL_NUMBER
+--------------------------------------------------
+	  1
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       10-OCT-26 a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e AUTOTEST_CYBER_ESPIONAGE_CASE_001_UPDATED							       Device
+SAMSUNG-NVME-990-PRO-001
+
+	  3
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       10-OCT-26 a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e AUTOTEST_CYBER_ESPIONAGE_1791649743978_UPDATED						       Device
+SAMSUNG-NVME-1791649743978
+
+	  4
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       10-OCT-26 a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e AUTOTEST_CYBER_ESPIONAGE_1791649909381_UPDATED						       Device
+SAMSUNG-NVME-1791649909381
+
+	  5
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       10-OCT-26 a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e AUTOTEST_CYBER_ESPIONAGE_1791652907134_UPDATED						       Device
+SAMSUNG-NVME-1791652907134
+
+	 21
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage		       11-OCT-26 a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e AUTOTEST_CYBER_ESPIONAGE_1791727403066_UPDATED						       Device
+SAMSUNG-NVME-1791727403066
+
+
+5 rows selected.
+
+
+---------------------------------------------------------------------------+
+[4.5] SEQUENCES & IDENTITY COLUMNS: USER_TAB_IDENTITY_COLS
+---------------------------------------------------------------------------+
+
+TABLE_NAME
+--------------------------------------------------------------------------------------------------------------------------------
+COLUMN_NAME															 GENERATION
+-------------------------------------------------------------------------------------------------------------------------------- ----------
+IDENTITY_OPTIONS
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+APP_USER
+USER_ID 															 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+AUDIT_LOG
+LOG_ID																 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+CASE_TABLE
+CASE_ID 															 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+CHAIN_OF_CUSTODY
+CUSTODY_ID															 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+DEVICE
+DEVICE_ID															 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+EVIDENCE
+EVIDENCE_ID															 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+FILE_RECORD
+FILE_ID 															 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+FORENSIC_ANALYSIS
+ANALYSIS_ID															 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+LABORATORY
+LABORATORY_ID															 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+LOCATION
+LOCATION_ID															 BY DEFAULT
+START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9999999999999999999999999999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N, SCALE_FLAG: N, EXTEND_FLAG: N, SESSION_FLAG: N, KEEP_VALUE: N
+
+
+10 rows selected.
+
+
+---------------------------------------------------------------------------+
+[4.6] INDEX INSPECTION: All 12 Explicit Performance Indexes
+---------------------------------------------------------------------------+
+
+INDEX_NAME
+--------------------------------------------------------------------------------------------------------------------------------
+TABLE_NAME															 UNIQUENES
+-------------------------------------------------------------------------------------------------------------------------------- ---------
+COLUMN_NAME
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+COLUMN_POSITION
+---------------
+IDX_AUDIT_TIME
+AUDIT_LOG															 NONUNIQUE
+TIMESTAMP_AT
+	      1
+
+IDX_AUDIT_USER
+AUDIT_LOG															 NONUNIQUE
+USER_ID
+	      1
+
+IDX_CASE_ASSIGNED
+CASE_TABLE															 NONUNIQUE
+ASSIGNED_TO
+	      1
+
+IDX_CASE_LOCATION
+CASE_TABLE															 NONUNIQUE
+LOCATION_ID
+	      1
+
+IDX_CASE_STATUS
+CASE_TABLE															 NONUNIQUE
+STATUS
+	      1
+
+IDX_CUSTODY_EVIDENCE
+CHAIN_OF_CUSTODY														 NONUNIQUE
+EVIDENCE_ID
+	      1
+
+IDX_CUSTODY_TIME
+CHAIN_OF_CUSTODY														 NONUNIQUE
+TIMESTAMP_AT
+	      1
+
+IDX_EVIDENCE_CASE
+EVIDENCE															 NONUNIQUE
+CASE_ID
+	      1
+
+IDX_EVIDENCE_HASH
+EVIDENCE															 NONUNIQUE
+HASH_VALUE
+	      1
+
+IDX_EVIDENCE_STATUS
+EVIDENCE															 NONUNIQUE
+STATUS
+	      1
+
+IDX_ANALYSIS_ANALYST
+FORENSIC_ANALYSIS														 NONUNIQUE
+ANALYST_ID
+	      1
+
+IDX_ANALYSIS_EVIDENCE
+FORENSIC_ANALYSIS														 NONUNIQUE
+EVIDENCE_ID
+	      1
+
+
+12 rows selected.
+
+
+---------------------------------------------------------------------------+
+[5.1] FUNCTION DEMONSTRATION: fn_days_in_current_status
+---------------------------------------------------------------------------+
+
+EVIDENCE_ID
+-----------
+DESCRIPTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATUS			       DAYS_IN_CURRENT_STATUS
+------------------------------ ----------------------
+	  1
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage					    1
+
+	  3
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage					    1
+
+	  4
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage					    1
+
+	  5
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage					    1
+
+	 21
+Seized NVMe SSD - Forensic Bitstream Image Acquired
+In Storage					    0
+
+
+5 rows selected.
+
+
+---------------------------------------------------------------------------+
+[5.2] FUNCTION DEMONSTRATION: fn_verify_hash (Match & Tamper Detection)
+---------------------------------------------------------------------------+
+Evidence ID tested: 1
+Real Hash: a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e
+Match Test Result:  MATCH
+Tamper Test Result: MISMATCH - POSSIBLE TAMPERING
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[5.3] PROCEDURE DEMONSTRATION: sp_register_evidence (Atomic Intake)
+---------------------------------------------------------------------------+
+>>> SUCCESS: sp_register_evidence executed. New Evidence_ID = 58
+>>> Initial Chain of Custody rows created: 1
+>>> IMMUTABILITY VERIFIED: trg_custody_no_delete protected registered log: ORA-20002: Chain_of_Custody is append-only: existing entries cannot be deleted.
+ORA-06512: at "DFEMS_USER.TRG_CUSTODY_NO_DELETE", line
+2
+ORA-04088: error during execution of trigger 'DFEMS_USER.TRG_CUSTODY_NO_DELETE'
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[5.4] PROCEDURE DEMONSTRATION: sp_flag_stale_evidence (PL/SQL Cursor Loop)
+---------------------------------------------------------------------------+
+ALERT: Evidence #1 (Seized NVMe SSD - Forensic Bitstream Image Acquired) has been in status 'In Storage' for 1 days.
+ALERT: Evidence #3 (Seized NVMe SSD - Forensic Bitstream Image Acquired) has been in status 'In Storage' for 1 days.
+ALERT: Evidence #4 (Seized NVMe SSD - Forensic Bitstream Image Acquired) has been in status 'In Storage' for 1 days.
+ALERT: Evidence #5 (Seized NVMe SSD - Forensic Bitstream Image Acquired) has been in status 'In Storage' for 1 days.
+RefCursor Row #1: ID=1 Days=1 | ALERT: Evidence #1 (Seized NVMe SSD - Forensic Bitstream Image Acquired) has been in status 'In Storage' for 1 days.
+RefCursor Row #2: ID=3 Days=1 | ALERT: Evidence #3 (Seized NVMe SSD - Forensic Bitstream Image Acquired) has been in status 'In Storage' for 1 days.
+RefCursor Row #3: ID=4 Days=1 | ALERT: Evidence #4 (Seized NVMe SSD - Forensic Bitstream Image Acquired) has been in status 'In Storage' for 1 days.
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[5.5] PROCEDURE DEMONSTRATION: sp_transfer_custody (Transactional Transfer)
+---------------------------------------------------------------------------+
+>>> SUCCESS: sp_transfer_custody updated evidence #59 to In Storage
+>>> IMMUTABILITY VERIFIED: Transfer log protected by trg_custody_no_delete.
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[6.1] TRIGGER DEMONSTRATION: trg_evidence_status_change
+---------------------------------------------------------------------------+
+>>> SUCCESS: trg_evidence_status_change fired automatically.
+Logged Action: Status changed: Collected -> Under Analysis
+>>> IMMUTABILITY VERIFIED: Automated trigger audit row protected by trg_custody_no_delete.
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[6.2] TRIGGER DEMONSTRATION: trg_custody_no_update (Append-Only Protection)
+---------------------------------------------------------------------------+
+>>> SUCCESS: trg_custody_no_update caught expected ORA-20001:
+ORA-20001: Chain_of_Custody is append-only: existing entries cannot be modified.
+ORA-06512: at "DFEMS_USER.TRG_CUSTODY_NO_UPDATE", line 2
+ORA-04088: error during execution of trigger 'DFEMS_USER.TRG_CUSTODY_NO_UPDATE'
+>>> Transaction rolled back safely. Zero residual records.
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[6.3] TRIGGER DEMONSTRATION: trg_custody_no_delete (Immutability Protection)
+---------------------------------------------------------------------------+
+>>> SUCCESS: trg_custody_no_delete caught expected ORA-20002:
+ORA-20002: Chain_of_Custody is append-only: existing entries cannot be deleted.
+ORA-06512: at "DFEMS_USER.TRG_CUSTODY_NO_DELETE", line 2
+ORA-04088: error during execution of trigger 'DFEMS_USER.TRG_CUSTODY_NO_DELETE'
+>>> Transaction rolled back safely. Zero residual records.
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[7.1] TRANSACTION DEMONSTRATION: SAVEPOINT, PARTIAL ROLLBACK & COMMIT
+---------------------------------------------------------------------------+
+>>> Caught error during step 3: ORA-12899: value too large for column "DFEMS_USER"."CASE_TABLE"."STATUS" (actual: 34, maximum: 20)
+>>> Executing: ROLLBACK TO sp_step2;
+>>> Verified Case Status after partial rollback: Under Investigation (Expected: Under Investigation)
+>>> Transaction finalized with COMMIT. Test record removed.
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[8.1] CONSTRAINT VIOLATION: Foreign Key Violation (ORA-02291)
+---------------------------------------------------------------------------+
+>>> SUCCESS: Foreign Key constraint caught expected ORA-02291:
+ORA-02291: integrity constraint (DFEMS_USER.FK_EVIDENCE_CASE) violated - parent key not found
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[8.2] CONSTRAINT VIOLATION: Check Constraint Violation (ORA-02290)
+---------------------------------------------------------------------------+
+>>> SUCCESS: Check constraint chk_evidence_status caught expected ORA-02290:
+ORA-02290: check constraint (DFEMS_USER.CHK_EVIDENCE_STATUS) violated
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[8.3] CONSTRAINT VIOLATION: Unique Constraint Violation (ORA-00001)
+---------------------------------------------------------------------------+
+>>> SUCCESS: Unique constraint uq_app_user_username caught expected ORA-00001:
+ORA-00001: unique constraint (DFEMS_USER.UQ_APP_USER_USERNAME) violated on table DFEMS_USER.APP_USER columns (USERNAME)
+ORA-03301: (ORA-00001 details) row with column values (USERNAME:'Krishan') already exists
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[8.4] CONSTRAINT VIOLATION: NOT NULL Constraint Violation (ORA-01400)
+---------------------------------------------------------------------------+
+>>> SUCCESS: Mandatory column constraint caught expected ORA-01400:
+ORA-01400: cannot insert NULL into ("DFEMS_USER"."CASE_TABLE"."TITLE")
+
+PL/SQL procedure successfully completed.
+
+
+---------------------------------------------------------------------------+
+[8.5] REFERENTIAL INTEGRITY ORPHAN AUDIT (Zero Orphan Records Expected)
+---------------------------------------------------------------------------+
+
+INTEGRITY_CHECK 		  ORPHAN_COUNT
+--------------------------------- ------------
+EVIDENCE Without Case			     0
+CHAIN_OF_CUSTODY Without Evidence	     0
+DEVICE Without Evidence 		     0
+
+3 rows selected.
+
+
+============================================================================
+DFEMS ORACLE SQL AND PL/SQL DEMONSTRATION COMPLETE
+All 8 categories demonstrated and verified against Oracle 26ai Free.
+============================================================================
