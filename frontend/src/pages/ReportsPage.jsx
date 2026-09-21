@@ -5,38 +5,141 @@ import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import Select from '../components/ui/Select';
 import Alert from '../components/ui/Alert';
+import EmptyState from '../components/ui/EmptyState';
 import { 
   FileText, 
   Download, 
   Printer, 
   ShieldCheck, 
   Scale, 
-  FileCheck,
   Building,
-  KeyRound
+  KeyRound,
+  FileSpreadsheet,
+  Loader2
 } from 'lucide-react';
+import { reportService } from '../services/reportService';
 
-export default function ReportsPage({ cases = [], evidence = [], custody = [], analyses = [] }) {
+export default function ReportsPage({ 
+  cases = [], 
+  evidence = [], 
+  custody = [], 
+  analyses = [],
+  _currentUser = null 
+}) {
   const [selectedCaseId, setSelectedCaseId] = useState(cases.length > 0 ? String(cases[0].id) : '1');
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState('');
   const [reportType, setReportType] = useState('full_dossier');
   const [exportNotice, setExportNotice] = useState(null);
-  const [reportDate] = useState('10 Oct 2026');
+  const [exportError, setExportError] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+  const [reportDate] = useState('11 Oct 2026');
 
-  const currentCase = cases.find((c) => String(c.id) === selectedCaseId) || cases[0];
-  const caseEvidence = evidence.filter((e) => e.caseId === currentCase?.id);
-  const caseCustody = custody.filter((c) => c.caseTitle === currentCase?.title);
+  const currentCase = cases.find((c) => String(c.id) === String(selectedCaseId)) || cases[0];
+  const caseEvidence = evidence.filter((e) => String(e.caseId) === String(currentCase?.id));
+  const caseCustody = custody.filter((c) => 
+    c.caseTitle === currentCase?.title || 
+    caseEvidence.some((e) => String(e.id) === String(c.evidenceId))
+  );
   const caseAnalyses = analyses.filter((a) => 
-    caseEvidence.some((e) => e.id === a.evidenceId)
+    caseEvidence.some((e) => String(e.id) === String(a.evidenceId))
   );
 
-  const handleExport = (format) => {
-    if (format === 'print') {
-      window.print();
-    } else {
-      setExportNotice(`Report exported successfully as ${format.toUpperCase()} for Case #${currentCase?.id} (${currentCase?.title}). In Phase 2, this triggers server-side court-stamped PDF compilation.`);
+  const effectiveEvidenceId = selectedEvidenceId || (caseEvidence.length > 0 ? String(caseEvidence[0].id) : null);
+
+  const handleExportPdf = async (typeOverride = null, evidenceIdOverride = null) => {
+    const typeToExport = typeOverride || reportType;
+    if (!currentCase) {
+      setExportError('No case selected to generate report.');
+      return;
+    }
+
+    setDownloading(true);
+    setExportError(null);
+    try {
+      if (typeToExport === 'full_dossier') {
+        await reportService.downloadCaseDossier(currentCase.id);
+        setExportNotice(`Official ISO/IEC 27037 Court Dossier generated for Case #${currentCase.id} (${currentCase.title}).`);
+      } else if (typeToExport === 'custody_cert') {
+        const evId = evidenceIdOverride || effectiveEvidenceId;
+        if (!evId) {
+          throw new Error('Please select an evidence item to generate a Chain of Custody Certificate.');
+        }
+        await reportService.downloadCustodyCert(evId);
+        setExportNotice(`Official Chain of Custody Certificate generated for Evidence EV-#${evId}.`);
+      } else if (typeToExport === 'hash_audit') {
+        await reportService.downloadIntegrityAudit(currentCase.id);
+        setExportNotice(`Cryptographic Integrity Verification Audit PDF generated for Case #${currentCase.id}.`);
+      }
       setTimeout(() => setExportNotice(null), 5000);
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.response?.data?.message || err.message || 'Failed to generate PDF report from server.';
+      setExportError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setDownloading(false);
     }
   };
+
+  const handleExportData = (format) => {
+    if (format === 'print') {
+      window.print();
+    } else if (format === 'csv') {
+      const rows = [
+        ['Case ID', 'Case Title', 'Evidence ID', 'Description', 'Type', 'SHA-256 Hash', 'Status'],
+        ...caseEvidence.map((e) => [
+          currentCase?.id,
+          `"${currentCase?.title}"`,
+          e.id,
+          `"${e.description}"`,
+          e.type,
+          e.hash || '',
+          e.status || ''
+        ])
+      ];
+      const csvContent = "data:text/csv;charset=utf-8," + rows.map((e) => e.join(",")).join("\n");
+      const link = document.createElement("a");
+      link.setAttribute("href", encodeURI(csvContent));
+      link.setAttribute("download", `DFEMS_Case_${currentCase?.id}_Ledger.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setExportNotice(`Exported Case #${currentCase?.id} Evidence Ledger as CSV.`);
+      setTimeout(() => setExportNotice(null), 4000);
+    } else if (format === 'json') {
+      const payload = {
+        case: currentCase,
+        evidence: caseEvidence,
+        custody: caseCustody,
+        analyses: caseAnalyses,
+        exportedAt: new Date().toISOString(),
+      };
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `DFEMS_Case_${currentCase?.id}_Dossier.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      setExportNotice(`Exported Case #${currentCase?.id} data as JSON.`);
+      setTimeout(() => setExportNotice(null), 4000);
+    }
+  };
+
+  if (!cases || cases.length === 0) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Court Reports & Forensic Dossiers"
+          subtitle="Generate ISO/IEC 27037 compliant evidentiary packages, custody certificates, and forensic case dossiers"
+        />
+        <Card className="p-12 text-center">
+          <EmptyState
+            title="No Authorized Cases Available"
+            description="You do not have any authorized cases registered in the system to compile forensic reports."
+          />
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -52,16 +155,17 @@ export default function ReportsPage({ cases = [], evidence = [], custody = [], a
             <Button 
               variant="outline" 
               icon={<Printer className="w-4 h-4" />}
-              onClick={() => handleExport('print')}
+              onClick={() => handleExportData('print')}
             >
-              Print / Save PDF
+              Print / Preview
             </Button>
             <Button 
               variant="primary" 
-              icon={<Download className="w-4 h-4" />}
-              onClick={() => handleExport('pdf')}
+              icon={downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              onClick={() => handleExportPdf()}
+              disabled={downloading}
             >
-              Export Sealed Dossier
+              {downloading ? 'Compiling PDF...' : 'Export Sealed PDF'}
             </Button>
           </div>
         }
@@ -70,7 +174,7 @@ export default function ReportsPage({ cases = [], evidence = [], custody = [], a
       {exportNotice && (
         <Alert 
           variant="success" 
-          title="Export Dispatched" 
+          title="Report Generated" 
           dismissible 
           onClose={() => setExportNotice(null)}
         >
@@ -78,13 +182,27 @@ export default function ReportsPage({ cases = [], evidence = [], custody = [], a
         </Alert>
       )}
 
+      {exportError && (
+        <Alert 
+          variant="danger" 
+          title="Export Failure" 
+          dismissible 
+          onClose={() => setExportError(null)}
+        >
+          {exportError}
+        </Alert>
+      )}
+
       {/* Report Configuration Bar */}
       <Card className="bg-white border-dfems-border">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <Select
             label="Select Case Dossier"
             value={selectedCaseId}
-            onChange={(e) => setSelectedCaseId(e.target.value)}
+            onChange={(e) => {
+              setSelectedCaseId(e.target.value);
+              setSelectedEvidenceId('');
+            }}
             options={cases.map((c) => ({
               value: String(c.id),
               label: `Case #${c.id}: ${c.title}`
@@ -100,22 +218,50 @@ export default function ReportsPage({ cases = [], evidence = [], custody = [], a
               { value: 'hash_audit', label: 'Cryptographic Integrity Verification Audit' },
             ]}
           />
+          {reportType === 'custody_cert' ? (
+            <Select
+              label="Select Evidence Item"
+              value={effectiveEvidenceId || ''}
+              onChange={(e) => setSelectedEvidenceId(e.target.value)}
+              options={
+                caseEvidence.length > 0
+                  ? caseEvidence.map((ev) => ({
+                      value: String(ev.id),
+                      label: `EV-${ev.id}: ${ev.description.substring(0, 30)}`
+                    }))
+                  : [{ value: '', label: 'No evidence in case' }]
+              }
+            />
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                icon={<FileSpreadsheet className="w-4 h-4" />}
+                onClick={() => handleExportData('csv')}
+              >
+                CSV Ledger
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                icon={<FileText className="w-4 h-4" />}
+                onClick={() => handleExportData('json')}
+              >
+                JSON Export
+              </Button>
+            </div>
+          )}
+
           <div className="flex gap-2">
             <Button
-              variant="outline"
-              className="flex-1"
-              icon={<FileCheck className="w-4 h-4" />}
-              onClick={() => handleExport('csv')}
+              variant="primary"
+              className="w-full"
+              icon={downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              onClick={() => handleExportPdf()}
+              disabled={downloading}
             >
-              Export CSV Ledger
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1"
-              icon={<Download className="w-4 h-4" />}
-              onClick={() => handleExport('json')}
-            >
-              Export JSON
+              {downloading ? 'Generating...' : 'Download PDF Report'}
             </Button>
           </div>
         </div>
@@ -165,13 +311,13 @@ export default function ReportsPage({ cases = [], evidence = [], custody = [], a
             </div>
             <div>
               <div className="text-dfems-text-secondary uppercase text-[10px] font-semibold">Investigating Officer</div>
-              <div className="font-semibold text-slate-900 mt-0.5">{currentCase?.assignedTo}</div>
+              <div className="font-semibold text-slate-900 mt-0.5">{currentCase?.assignedTo || 'Unassigned'}</div>
             </div>
             <div>
               <div className="text-dfems-text-secondary uppercase text-[10px] font-semibold">Status in DFEMS</div>
               <div className="mt-0.5">
                 <Badge variant={currentCase?.status === 'Closed' ? 'neutral' : 'primary'} size="sm">
-                  {currentCase?.status}
+                  {currentCase?.status || 'Active'}
                 </Badge>
               </div>
             </div>
@@ -181,7 +327,7 @@ export default function ReportsPage({ cases = [], evidence = [], custody = [], a
             </div>
             <div className="col-span-2">
               <div className="text-dfems-text-secondary uppercase text-[10px] font-semibold">Incident / Seizure Location</div>
-              <div className="font-medium text-slate-900 mt-0.5">{currentCase?.location}</div>
+              <div className="font-medium text-slate-900 mt-0.5">{currentCase?.location || 'Bengaluru, KA'}</div>
             </div>
           </div>
         </div>
@@ -206,6 +352,7 @@ export default function ReportsPage({ cases = [], evidence = [], custody = [], a
                     <th className="py-2.5 px-3">Type</th>
                     <th className="py-2.5 px-3 font-mono">SHA-256 Checksum</th>
                     <th className="py-2.5 px-3 text-center">Status</th>
+                    <th className="py-2.5 px-3 text-right">PDF Certificate</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-dfems-border">
@@ -220,10 +367,23 @@ export default function ReportsPage({ cases = [], evidence = [], custody = [], a
                         <Badge variant="outline" size="sm">{item.type}</Badge>
                       </td>
                       <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 break-all max-w-xs">
-                        {item.hash}
+                        {item.hash || 'NO_HASH_RECORDED'}
                       </td>
                       <td className="py-2.5 px-3 text-center">
-                        <Badge variant="success" size="sm">VERIFIED</Badge>
+                        <Badge variant={item.hash ? "success" : "neutral"} size="sm">
+                          {item.hash ? "VERIFIED" : "PENDING"}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<Download className="w-3.5 h-3.5" />}
+                          onClick={() => handleExportPdf('custody_cert', item.id)}
+                          disabled={downloading}
+                        >
+                          Custody Cert
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -325,7 +485,7 @@ export default function ReportsPage({ cases = [], evidence = [], custody = [], a
                 I hereby certify that the evidence documented herein has been gathered and maintained in accordance with standard forensic integrity procedures.
               </p>
               <div className="border-t border-dashed border-slate-400 pt-2 font-mono text-[11px]">
-                <div>Name: {currentCase?.assignedTo}</div>
+                <div>Name: {currentCase?.assignedTo || 'Investigating Officer'}</div>
                 <div className="text-dfems-text-secondary">Badge: INV-VERIFIED | DFEMS Security ID</div>
               </div>
             </div>

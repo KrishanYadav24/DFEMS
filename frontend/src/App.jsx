@@ -277,12 +277,14 @@ export default function App() {
           evidence={evidence}
           custody={custody}
           analyses={analyses}
+          currentUser={currentUser}
         />
       )}
 
       {activePage === 'audit' && (
         <AuditLogsPage
           auditLogs={auditLogs}
+          currentUser={currentUser}
         />
       )}
 

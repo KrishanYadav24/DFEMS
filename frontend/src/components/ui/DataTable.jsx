@@ -102,13 +102,14 @@ export default function DataTable({
             <thead>
               <tr className="bg-gray-50/80 border-b border-app-border text-xs text-app-muted uppercase tracking-wider font-semibold">
                 {columns.map((col) => {
-                  const isSortable = col.sortable !== false && col.field;
-                  const isCurrentSort = sortField === col.field;
+                  const fieldKey = col.field || col.accessor;
+                  const isSortable = col.sortable !== false && fieldKey;
+                  const isCurrentSort = sortField === fieldKey;
 
                   return (
                     <th
-                      key={col.header || col.field}
-                      onClick={() => isSortable && handleSort(col.field)}
+                      key={col.header || fieldKey}
+                      onClick={() => isSortable && handleSort(fieldKey)}
                       className={`px-4 py-3 select-none ${isSortable ? 'cursor-pointer hover:bg-gray-100/70' : ''} ${col.className || ''}`}
                     >
                       <div className="flex items-center gap-1.5">
@@ -160,11 +161,14 @@ export default function DataTable({
                     onClick={() => onRowClick && onRowClick(row)}
                     className={`hover:bg-blue-50/40 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
                   >
-                    {columns.map((col, cIdx) => (
-                      <td key={cIdx} className={`px-4 py-3 text-app-text ${col.cellClassName || ''}`}>
-                        {col.render ? col.render(row) : row[col.field]}
-                      </td>
-                    ))}
+                    {columns.map((col, cIdx) => {
+                      const fieldKey = col.field || col.accessor;
+                      return (
+                        <td key={cIdx} className={`px-4 py-3 text-app-text ${col.cellClassName || ''}`}>
+                          {col.render ? col.render(row) : (fieldKey ? row[fieldKey] : null)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))
               )}

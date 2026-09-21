@@ -271,51 +271,145 @@ export async function getView(req, res, next) {
 
 export async function getDashboardStats(req, res, next) {
   try {
+    const user = req.user;
+    const isInvestigator = user && user.role === 'Investigator';
+    const binds = isInvestigator ? { investigatorUserId: user.userId } : {};
+
+    const caseFilter = isInvestigator
+      ? `WHERE (c.Created_By = :investigatorUserId OR c.Assigned_To = :investigatorUserId OR EXISTS (SELECT 1 FROM ASSIGNED a WHERE a.Case_ID = c.Case_ID AND a.User_ID = :investigatorUserId))`
+      : '';
+
+    const evidenceFilter = isInvestigator
+      ? `WHERE e.Case_ID IN (SELECT c.Case_ID FROM CASE_TABLE c WHERE c.Created_By = :investigatorUserId OR c.Assigned_To = :investigatorUserId OR EXISTS (SELECT 1 FROM ASSIGNED a WHERE a.Case_ID = c.Case_ID AND a.User_ID = :investigatorUserId))`
+      : '';
+
+    const custodyFilter = isInvestigator
+      ? `WHERE e.Case_ID IN (SELECT c.Case_ID FROM CASE_TABLE c WHERE c.Created_By = :investigatorUserId OR c.Assigned_To = :investigatorUserId OR EXISTS (SELECT 1 FROM ASSIGNED a WHERE a.Case_ID = c.Case_ID AND a.User_ID = :investigatorUserId))`
+      : '';
+
     // 1. Cases count
     const casesResult = await query(`
       SELECT 
         COUNT(*) AS Total_Cases,
-        COUNT(CASE WHEN Status IN ('Open', 'Under Investigation') THEN 1 END) AS Active_Cases,
-        COUNT(CASE WHEN Status = 'Closed' THEN 1 END) AS Closed_Cases
-      FROM CASE_TABLE
-    `);
+        COUNT(CASE WHEN c.Status IN ('Open', 'Under Investigation') THEN 1 END) AS Active_Cases,
+        COUNT(CASE WHEN c.Status = 'Closed' THEN 1 END) AS Closed_Cases,
+        COUNT(CASE WHEN c.Status = 'Archived' THEN 1 END) AS Archived_Cases
+      FROM CASE_TABLE c
+      ${caseFilter}
+    `, binds);
 
     // 2. Evidence counts
     const evidenceResult = await query(`
       SELECT 
         COUNT(*) AS Total_Evidence,
-        COUNT(CASE WHEN Status = 'Under Analysis' THEN 1 END) AS Under_Analysis,
-        COUNT(CASE WHEN Status = 'In Storage' THEN 1 END) AS In_Storage,
-        COUNT(CASE WHEN Status = 'Presented in Court' THEN 1 END) AS In_Court
-      FROM EVIDENCE
-    `);
+        COUNT(CASE WHEN e.Status = 'Under Analysis' THEN 1 END) AS Under_Analysis,
+        COUNT(CASE WHEN e.Status = 'In Storage' THEN 1 END) AS In_Storage,
+        COUNT(CASE WHEN e.Status = 'Presented in Court' THEN 1 END) AS In_Court,
+        COUNT(CASE WHEN e.Status = 'Collected' THEN 1 END) AS Collected,
+        COUNT(CASE WHEN e.Status = 'Archived' THEN 1 END) AS Archived
+      FROM EVIDENCE e
+      ${evidenceFilter}
+    `, binds);
 
     // 3. Custody total
-    const custodyResult = await query(`SELECT COUNT(*) AS Total_Logs FROM CHAIN_OF_CUSTODY`);
+    const custodyResult = await query(`
+      SELECT COUNT(*) AS Total_Logs
+      FROM CHAIN_OF_CUSTODY coc
+      JOIN EVIDENCE e ON coc.Evidence_ID = e.Evidence_ID
+      ${custodyFilter}
+    `, binds);
 
-    // 4. Status Breakdown
+    // 4. Status Breakdown for Charts
     const breakdownResult = await query(`
-      SELECT Status AS Name, COUNT(*) AS Value
-      FROM EVIDENCE
-      GROUP BY Status
+      SELECT e.Status AS Name, COUNT(*) AS Value
+      FROM EVIDENCE e
+      ${evidenceFilter}
+      GROUP BY e.Status
       ORDER BY Value DESC
-    `);
+    `, binds);
 
-    // 5. Evidence per case
+    // 5. Evidence per Case (Top 8 for bar chart)
     const perCaseResult = await query(`
-      SELECT c.Title, COUNT(e.Evidence_ID) AS Evidence_Count
+      SELECT c.Case_ID, c.Title, COUNT(e.Evidence_ID) AS Evidence_Count
       FROM CASE_TABLE c
       LEFT JOIN EVIDENCE e ON c.Case_ID = e.Case_ID
+      ${caseFilter}
       GROUP BY c.Case_ID, c.Title
-      ORDER BY c.Case_ID ASC
-    `);
+      ORDER BY Evidence_Count DESC, c.Case_ID ASC
+      FETCH FIRST 8 ROWS ONLY
+    `, binds);
+
+    // 6. Evidence Type Distribution (Device vs File vs General)
+    const typeDistResult = await query(`
+      SELECT 
+        CASE 
+          WHEN d.Device_ID IS NOT NULL THEN 'Physical Device'
+          WHEN f.File_ID IS NOT NULL THEN 'Digital Bitstream'
+          ELSE 'General Evidence'
+        END AS Name,
+        COUNT(*) AS Value
+      FROM EVIDENCE e
+      LEFT JOIN DEVICE d ON e.Evidence_ID = d.Evidence_ID
+      LEFT JOIN FILE_RECORD f ON e.Evidence_ID = f.Evidence_ID
+      ${evidenceFilter}
+      GROUP BY 
+        CASE 
+          WHEN d.Device_ID IS NOT NULL THEN 'Physical Device'
+          WHEN f.File_ID IS NOT NULL THEN 'Digital Bitstream'
+          ELSE 'General Evidence'
+        END
+      ORDER BY Value DESC
+    `, binds);
+
+    // 7. Hash Integrity Metrics
+    const integrityResult = await query(`
+      SELECT 
+        COUNT(e.Hash_Value) AS Hashed_Count,
+        COUNT(*) AS Total_Items
+      FROM EVIDENCE e
+      ${evidenceFilter}
+    `, binds);
+
+    // 8. Stale Evidence Count (fn_days_in_current_status > 30)
+    const staleResult = await query(`
+      SELECT COUNT(*) AS Stale_Count
+      FROM EVIDENCE e
+      ${evidenceFilter ? evidenceFilter + ' AND' : 'WHERE'} 
+        e.Status NOT IN ('Archived', 'Disposed', 'Presented in Court')
+        AND fn_days_in_current_status(e.Evidence_ID) > 30
+    `, binds);
+
+    // 9. Recent Custody Activity (Top 5)
+    const recentCustodyResult = await query(`
+      SELECT 
+        coc.Custody_ID AS ID,
+        TO_CHAR(coc.Timestamp_At, 'YYYY-MM-DD HH24:MI:SS') AS Timestamp,
+        coc.Action,
+        coc.Evidence_ID AS Evidence_ID,
+        e.Description AS Evidence_Desc,
+        c.Title AS Case_Title,
+        NVL(u.First_Name || ' ' || u.Last_Name, 'System Custodian') AS Actor
+      FROM CHAIN_OF_CUSTODY coc
+      JOIN EVIDENCE e ON coc.Evidence_ID = e.Evidence_ID
+      JOIN CASE_TABLE c ON e.Case_ID = c.Case_ID
+      LEFT JOIN APP_USER u ON coc.User_ID = u.User_ID
+      ${custodyFilter}
+      ORDER BY coc.Custody_ID DESC
+      FETCH FIRST 5 ROWS ONLY
+    `, binds);
 
     return apiResponse.success(res, {
-      cases: casesResult.rows?.[0] || {},
-      evidence: evidenceResult.rows?.[0] || {},
-      custody: custodyResult.rows?.[0] || {},
+      role: user?.role || 'Guest',
+      isIsolated: Boolean(isInvestigator),
+      cases: casesResult.rows?.[0] || { TOTAL_CASES: 0, ACTIVE_CASES: 0, CLOSED_CASES: 0 },
+      evidence: evidenceResult.rows?.[0] || { TOTAL_EVIDENCE: 0, UNDER_ANALYSIS: 0, IN_STORAGE: 0, IN_COURT: 0 },
+      custody: custodyResult.rows?.[0] || { TOTAL_LOGS: 0 },
       statusBreakdown: breakdownResult.rows || [],
       evidenceDistribution: perCaseResult.rows || [],
+      typeDistribution: typeDistResult.rows || [],
+      integrity: integrityResult.rows?.[0] || { HASHED_COUNT: 0, TOTAL_ITEMS: 0 },
+      staleEvidence: staleResult.rows?.[0] || { STALE_COUNT: 0 },
+      recentCustody: recentCustodyResult.rows || [],
     });
   } catch (error) {
     next(error);

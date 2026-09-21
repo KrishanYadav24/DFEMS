@@ -3,14 +3,52 @@ import { apiResponse } from '../utils/apiResponse.js';
 
 export async function getAuditLogs(req, res, next) {
   try {
-    const { action, search } = req.query;
+    const { action, search, page = 1, limit = 50, startDate, endDate } = req.query;
 
-    let sql = `
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+
+    let filterSql = ` WHERE 1=1`;
+    const binds = {};
+
+    if (action && action !== 'ALL') {
+      filterSql += ` AND a.Action = :action`;
+      binds.action = action;
+    }
+
+    if (startDate) {
+      filterSql += ` AND a.Timestamp_At >= TO_DATE(:startDate, 'YYYY-MM-DD')`;
+      binds.startDate = startDate;
+    }
+
+    if (endDate) {
+      filterSql += ` AND a.Timestamp_At <= TO_DATE(:endDate || ' 23:59:59', 'YYYY-MM-DD HH24:MI:SS')`;
+      binds.endDate = endDate;
+    }
+
+    if (search && search.trim()) {
+      filterSql += ` AND (UPPER(a.Details) LIKE :search OR UPPER(a.Action) LIKE :search OR UPPER(u.Username) LIKE :search)`;
+      binds.search = `%${search.trim().toUpperCase()}%`;
+    }
+
+    // 1. Total Count Query
+    const countSql = `
+      SELECT COUNT(*) AS Total
+      FROM AUDIT_LOG a
+      LEFT JOIN APP_USER u ON a.User_ID = u.User_ID
+      ${filterSql}
+    `;
+    const countResult = await query(countSql, binds);
+    const total = countResult.rows?.[0]?.TOTAL || 0;
+
+    // 2. Data Query with Oracle 12c+ Pagination
+    const dataSql = `
       SELECT 
         a.Log_ID,
         a.User_ID,
-        u.Username,
-        u.Role,
+        NVL(u.Username, 'System') AS Username,
+        NVL(u.Role, 'System') AS Role,
         a.Action,
         a.Entity_Name,
         a.Entity_ID,
@@ -19,25 +57,24 @@ export async function getAuditLogs(req, res, next) {
         a.Details
       FROM AUDIT_LOG a
       LEFT JOIN APP_USER u ON a.User_ID = u.User_ID
-      WHERE 1=1
+      ${filterSql}
+      ORDER BY a.Log_ID DESC
+      OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
     `;
 
-    const binds = {};
+    const dataBinds = {
+      ...binds,
+      offset,
+      limit: limitNum,
+    };
 
-    if (action && action !== 'ALL') {
-      sql += ` AND a.Action = :action`;
-      binds.action = action;
-    }
-
-    if (search && search.trim()) {
-      sql += ` AND (UPPER(a.Details) LIKE :search OR UPPER(a.Action) LIKE :search OR UPPER(u.Username) LIKE :search)`;
-      binds.search = `%${search.trim().toUpperCase()}%`;
-    }
-
-    sql += ` ORDER BY a.Log_ID DESC`;
-
-    const result = await query(sql, binds);
-    return apiResponse.success(res, result.rows || [], { count: result.rows?.length || 0 });
+    const result = await query(dataSql, dataBinds);
+    return apiResponse.success(res, result.rows || [], {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    });
   } catch (error) {
     next(error);
   }

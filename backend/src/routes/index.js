@@ -7,6 +7,7 @@ import analysisRoutes from './analysisRoutes.js';
 import analyticsRoutes from './analyticsRoutes.js';
 import auditRoutes from './auditRoutes.js';
 import authRoutes from './authRoutes.js';
+import reportRoutes from './reportRoutes.js';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/analysis', analysisRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/audit-logs', auditRoutes);
 router.use('/auth', authRoutes);
+router.use('/reports', reportRoutes);
 
 export default router;

@@ -12,7 +12,8 @@
     "test:crud": "node tests/crud.test.js",
     "test:custody": "node tests/custody.test.js",
     "test:demo": "node tests/demo.test.js",
-    "test": "node tests/auth.test.js && node tests/crud.test.js && node tests/custody.test.js && node tests/demo.test.js",
+    "test:phase8": "node tests/phase8.test.js",
+    "test": "node tests/auth.test.js && node tests/crud.test.js && node tests/custody.test.js && node tests/demo.test.js && node tests/phase8.test.js",
     "reset-password": "node scripts/resetPassword.js"
   },
   "keywords": [
@@ -33,6 +34,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.4.0",
-    "oracledb": "^6.8.0"
+    "oracledb": "^6.8.0",
+    "pdfkit": "^0.20.2"
   }
 }
