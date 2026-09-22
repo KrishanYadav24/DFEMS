@@ -13,7 +13,8 @@
     "test:custody": "node tests/custody.test.js",
     "test:demo": "node tests/demo.test.js",
     "test:phase8": "node tests/phase8.test.js",
-    "test": "node tests/auth.test.js && node tests/crud.test.js && node tests/custody.test.js && node tests/demo.test.js && node tests/phase8.test.js",
+    "test:integration": "node tests/integration.test.js",
+    "test": "node tests/auth.test.js && node tests/crud.test.js && node tests/custody.test.js && node tests/demo.test.js && node tests/phase8.test.js && node tests/integration.test.js",
     "reset-password": "node scripts/resetPassword.js"
   },
   "keywords": [

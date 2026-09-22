@@ -277,6 +277,12 @@ export async function createUser(req, res, next) {
       return apiResponse.error(res, `Username '${username}' is already in use.`, 'DUPLICATE_USERNAME', null, 409);
     }
 
+    // Normalize role to satisfy Oracle CHECK constraint chk_app_user_role
+    let dbRole = role;
+    if (role === 'Lab Technician' || role === 'lab_technician') {
+      dbRole = 'Forensic Examiner';
+    }
+
     // Hash password with bcrypt (work factor 12)
     const plainPassword = password || 'DefaultPass@2026';
     const passwordHash = await bcrypt.hash(plainPassword, 12);
@@ -311,7 +317,7 @@ export async function createUser(req, res, next) {
         phone: phone || null,
         username: username.trim(),
         passwordHash,
-        role,
+        role: dbRole,
         outUserId: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
       };
 
@@ -319,12 +325,12 @@ export async function createUser(req, res, next) {
       const generatedUserId = result.outBinds.outUserId[0];
 
       // 2. Insert into role-specific sub-table
-      if (role === 'Investigator' && badge) {
+      if (dbRole === 'Investigator' && badge) {
         await conn.execute(
           `INSERT INTO INVESTIGATOR (User_ID, Badge_Number) VALUES (:userId, :badge)`,
           { userId: generatedUserId, badge }
         );
-      } else if (role === 'Forensic Examiner' || role === 'Lab Technician') {
+      } else if (dbRole === 'Forensic Examiner') {
         await conn.execute(
           `INSERT INTO FORENSIC_ANALYST (User_ID, Certification, Laboratory_ID) VALUES (:userId, :cert, :labId)`,
           {
@@ -346,7 +352,7 @@ export async function createUser(req, res, next) {
           adminUserId: req.user?.userId || generatedUserId,
           newUserId: generatedUserId,
           ip: clientIp,
-          details: `Account for '${username}' (${role}) created by administrator.`,
+          details: `Account for '${username}' (${dbRole}) created by administrator.`,
         }
       );
 
@@ -355,7 +361,7 @@ export async function createUser(req, res, next) {
         firstName,
         lastName,
         username,
-        role,
+        role: dbRole,
         status: 'Active',
       };
     });
