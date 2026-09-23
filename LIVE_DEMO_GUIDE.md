@@ -43,9 +43,9 @@ VITE v8.3.4  ready in 320 ms
 ### 1.3 Demonstration Credentials
 | Role | Username | Password | Purpose / Scoped Permissions |
 |---|---|---|---|
-| **System Admin** | `Krishan` | `Krishan_2404` | Full system access, audit log viewer, user management, PDF exports |
-| **Investigator** | `ravi.kumar` | `Investigator_2404` | Case creation, evidence registration, custody transfer initiation |
-| **Lab Technician / Examiner** | `karthik.menon` | `Examiner_2404` | Forensic analysis findings, hash verification, examiner certification |
+| **System Admin** | `Krishan` | *Password set during bootstrap / `.env`* | Full system access, audit log viewer, user management, PDF exports |
+| **Investigator** | `ravi.kumar` | *Configured user password* | Case creation, evidence registration, custody transfer initiation |
+| **Lab Technician / Examiner** | `karthik.menon` | *Configured user password* | Forensic analysis findings, hash verification, examiner certification |
 
 ---
 
@@ -70,7 +70,7 @@ Follow these 13 steps in sequence for a complete live evaluation:
 ### Step 2: Authentication & RBAC Verification
 1. Log in as Administrator:
    - Username: `Krishan`
-   - Password: `Krishan_2404`
+   - Password: *[Your Administrator Password set during bootstrap]*
 2. Observe successful authentication, JWT issuance, and redirection to the **Dashboard**.
 3. Verify that the Topbar displays the user badge: **"Krishan — Admin"**.
 4. Log out and demonstrate rejection of invalid credentials:
