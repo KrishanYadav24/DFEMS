@@ -218,7 +218,7 @@ Where automated headless browser execution is constrained in continuous integrat
 
 | Screen / UI Feature | Verification Procedure | Observed Behavior | Status |
 |---|---|---|---|
-| **Login Flow** | Navigate to `/login`, enter `Krishan` / `Krishan_2404`, submit | Form validates, loading spinner displays, JWT stored in localStorage, redirected to `/dashboard` | **PASS** |
+| **Login Flow** | Navigate to `/login`, enter `Krishan` and configured admin password, submit | Form validates, loading spinner displays, JWT stored in localStorage, redirected to `/dashboard` | **PASS** |
 | **Session Expiration** | Clear token from storage, attempt navigation to `/cases` | Auth guard intercepts request, clears user state, redirects to `/login?expired=true` | **PASS** |
 | **Topbar & Health Status** | Observe topbar on any authenticated page | Displays database health badge (Green dot, "Oracle 26ai Connected", current role badge "Admin") | **PASS** |
 | **Sidebar Navigation** | Click each sidebar route (Dashboard, Cases, Evidence, Custody, Analysis, Reports, Audit Logs, Settings) | Active tab highlights with blue accent, page renders in under 100ms without layout shifts | **PASS** |

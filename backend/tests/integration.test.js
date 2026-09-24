@@ -133,7 +133,7 @@ async function runIntegrationTests() {
       method: 'POST',
       body: {
         username: 'Krishan',
-        password: process.env.ADMIN_BOOTSTRAP_PASSWORD || 'Krishan_2404',
+        password: process.env.ADMIN_BOOTSTRAP_PASSWORD || process.env.DB_PASSWORD || 'AdminPassword123!',
       },
     });
 
