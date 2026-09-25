@@ -1,28 +1,82 @@
-# Environment variables and secrets
+# =============================================================================
+# DFEMS (Digital Forensic Evidence Management System) — Git Ignore Rules
+# =============================================================================
+
+# 1. Environment Variables & Secrets (CRITICAL)
 .env
 .env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 !.env.example
+*.pem
+*.key
+*.cert
+*.pfx
 
-# Node dependencies
+# 2. Dependencies & Package Managers
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Production build outputs
+# 3. Production & Build Outputs
 dist/
 build/
+out/
+.next/
 
-# Runtime and log directories
-logs/
-*.log
+# 4. Forensic Evidence Vault & Uploaded Binaries
 backend/vault/evidence/*
 !backend/vault/evidence/.gitkeep
 vault/evidence/*
 !vault/evidence/.gitkeep
 
-# Editor & OS files
+# 5. Runtime Logs, Telemetry & Dumps
+logs/
+*.log
+demo_output.log
+*.dump
+*.sql.dump
+
+# 6. Presentation Decks, Scratch Scripts & Office Documents
+*.pptx
+*.ppt
+*.docx
+docs/
+generate_ppt.py
+DFEMS_Comprehensive_Presentation.pptx
+
+# 7. Backup, Temporary & Swap Files
+*.bak
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+scratch/
+
+# 8. Python Cache & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+.venv/
+env/
+
+# 9. IDE, Workspace & Operating System Files
 .vscode/
 .idea/
+*.sublime-project
+*.sublime-workspace
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
