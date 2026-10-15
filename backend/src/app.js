@@ -15,7 +15,12 @@ export function createApp() {
   // Cross-Origin Resource Sharing
   app.use(
     cors({
-      origin: [env.CLIENT_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: [
+        env.CLIENT_ORIGIN,
+        'https://frontend-seven-sigma-dv0zxs3c3f.vercel.app',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173'
+      ],
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       credentials: true,
