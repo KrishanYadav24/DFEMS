@@ -17,6 +17,14 @@ export default function Input({
 }) {
   const inputId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
 
+  const renderIcon = () => {
+    if (!Icon) return null;
+    if (React.isValidElement(Icon)) {
+      return Icon;
+    }
+    return <Icon className="h-4 w-4" />;
+  };
+
   return (
     <div className={`w-full ${className}`}>
       {label && (
@@ -29,7 +37,7 @@ export default function Input({
       <div className="relative rounded-lg shadow-sm">
         {Icon && (
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-            <Icon className="h-4 w-4" />
+            {renderIcon()}
           </div>
         )}
 
